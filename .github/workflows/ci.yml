@@ -63,8 +63,6 @@ jobs:
         
         # Configure Conan
         conan profile detect --force
-        conan profile update settings.compiler=${{ matrix.config.cc == 'clang-15' && 'clang' || 'gcc' }} default
-        conan profile update settings.compiler.version=${{ matrix.config.cc == 'clang-15' && '15' || '12' }} default
 
     - name: Install dependencies (macOS)  
       if: startsWith(matrix.config.os, 'macos')
@@ -76,7 +74,6 @@ jobs:
         
         # Configure Conan  
         conan profile detect --force
-        conan profile update settings.compiler=clang default
         
         # Add LLVM to PATH for clang-format and clang-tidy
         echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
@@ -89,7 +86,7 @@ jobs:
         # Install Conan dependencies
         mkdir -p build
         cd build
-        conan install .. --build=missing -s build_type=${{ matrix.config.build_type }} -s compiler.cppstd=23
+        conan install .. --build=missing -s build_type=${{ matrix.config.build_type }} -s compiler.cppstd=23 -s compiler=${{ matrix.config.cc == 'clang-15' && 'clang' || (matrix.config.cc == 'clang' && 'clang' || 'gcc') }} -s compiler.version=${{ matrix.config.cc == 'clang-15' && '15' || (matrix.config.cc == 'clang' && '15' || '12') }}
         
         # Configure CMake
         cmake .. \
@@ -140,9 +137,7 @@ jobs:
         pip3 install conan>=2.0.5
         
         # Configure Conan
-        conan profile detect --force  
-        conan profile update settings.compiler=gcc default
-        conan profile update settings.compiler.version=12 default
+        conan profile detect --force
 
     - name: Check formatting
       run: |
@@ -156,7 +151,7 @@ jobs:
         # Install Conan dependencies
         mkdir -p build
         cd build
-        conan install .. --build=missing -s build_type=Release -s compiler.cppstd=23
+        conan install .. --build=missing -s build_type=Release -s compiler.cppstd=23 -s compiler=gcc -s compiler.version=12
         
         # Configure CMake for linting
         cmake .. \
@@ -197,8 +192,6 @@ jobs:
         
         # Configure Conan
         conan profile detect --force
-        conan profile update settings.compiler=gcc default  
-        conan profile update settings.compiler.version=12 default
 
     - name: Configure and build
       run: |
@@ -208,7 +201,7 @@ jobs:
         # Install Conan dependencies
         mkdir -p build
         cd build
-        conan install .. --build=missing -s build_type=Release -s compiler.cppstd=23
+        conan install .. --build=missing -s build_type=Release -s compiler.cppstd=23 -s compiler=gcc -s compiler.version=12
         
         # Configure and build
         cmake .. \
