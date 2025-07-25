@@ -25,8 +25,8 @@ jobs:
             name: "Linux Clang", 
             os: ubuntu-latest,
             build_type: "Release",
-            cc: "clang-15",
-            cxx: "clang++-15"
+            cc: "clang-18",
+            cxx: "clang++-18"
           }
         - {
             name: "macOS",
@@ -48,11 +48,18 @@ jobs:
       if: startsWith(matrix.config.os, 'ubuntu')
       run: |
         sudo apt-get update
+        
+        # Add LLVM repository for newer Clang
+        wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+        sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
+        sudo apt-get update
         sudo apt-get install -y \
           cmake \
           ninja-build \
           ${{ matrix.config.cc }} \
           ${{ matrix.config.cxx }} \
+          libc++-18-dev \
+          libc++abi-18-dev \
           clang-format \
           clang-tidy
         

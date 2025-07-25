@@ -29,6 +29,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
+# Use libc++ with Clang for better C++23 support
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-stdlib=libc++)
+    add_link_options(-stdlib=libc++)
+endif()
+
 # Create trading engine library
 file(GLOB_RECURSE TRADING_SOURCES "src/*.cpp")
 add_library(trading_engine ${TRADING_SOURCES})
