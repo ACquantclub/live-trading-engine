@@ -1,0 +1,47 @@
+{
+    "application": {
+        "name": "Live Trading Engine",
+        "version": "1.0.0",
+        "environment": "development"
+    },
+    "http": {
+        "host": "0.0.0.0",
+        "port": 8080,
+        "timeout_seconds": 30,
+        "max_connections": 1000
+    },
+    "redpanda": {
+        "brokers": "localhost:9092",
+        "timeout_ms": 5000,
+        "batch_size": 100,
+        "topics": {
+            "orders": "trading.orders",
+            "trades": "trading.trades",
+            "confirmations": "trading.confirmations"
+        }
+    },
+    "validation": {
+        "market_open": true,
+        "min_quantity": 0.01,
+        "max_quantity": 1000000.0,
+        "min_price": 0.01,
+        "max_price": 1000000.0,
+        "valid_symbols": ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"]
+    },
+    "execution": {
+        "timeout_ms": 5000,
+        "max_retries": 3
+    },
+    "logging": {
+        "level": "INFO",
+        "file_path": "logs/trading_engine.log",
+        "max_file_size_mb": 100,
+        "console_output": true,
+        "rotate_logs": true
+    },
+    "matching_engine": {
+        "enable_callbacks": true,
+        "price_precision": 2,
+        "quantity_precision": 6
+    }
+} 

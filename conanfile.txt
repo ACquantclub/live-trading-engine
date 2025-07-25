@@ -1,0 +1,13 @@
+# [requires] - Currently no external dependencies needed
+# Dependencies will be added when actually used in the code:
+# nlohmann_json/3.11.3  # For JSON parsing
+# spdlog/1.12.0         # For structured logging  
+# librdkafka/2.3.0      # For Kafka/Redpanda integration
+# Testing (Google Test is handled by CMake FetchContent)
+
+# [generators] - Not needed when no dependencies are specified
+# CMakeDeps
+# CMakeToolchain
+
+# Note: When dependencies are added, uncomment the generators section above
+# and use: conan install . -s compiler.cppstd=23 
