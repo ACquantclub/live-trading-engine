@@ -1,41 +1,109 @@
-# Prerequisites
-*.d
+# Build directories
+build/
+bin/
+lib/
+obj/
 
-# Compiled Object files
-*.slo
-*.lo
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# Generated files
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+
+# Object files
 *.o
 *.obj
+*.ko
+*.elf
+
+# Linker output
+*.ilk
+*.map
+*.exp
 
 # Precompiled Headers
 *.gch
 *.pch
 
-# Linker files
-*.ilk
-
-# Debugger Files
-*.pdb
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
+# Libraries
 *.lib
+*.la
+*.lo
+
+# Shared objects
+*.so.*
 
 # Executables
 *.exe
 *.out
 *.app
+*.i*86
+*.x86_64
+*.hex
 
-# debug information files
-*.dwo
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
+
+# Logs
+logs/
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Conan
+conandata.yml
+conaninfo.txt
+conanbuildinfo.*
+conan.lock
+
+# Test results
+*test_results.xml
+*.gcov
+*.gcda
+*.gcno
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Configuration overrides
+config/local_*.json
+config/production_*.json
+
+# Certificates and keys
+*.pem
+*.key
+*.crt
+*.p12

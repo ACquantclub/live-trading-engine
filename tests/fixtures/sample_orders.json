@@ -1,0 +1,56 @@
+{
+    "orders": [
+        {
+            "id": "ORDER_001",
+            "symbol": "AAPL",
+            "type": "LIMIT",
+            "side": "BUY",
+            "quantity": 100.0,
+            "price": 150.50
+        },
+        {
+            "id": "ORDER_002",
+            "symbol": "AAPL",
+            "type": "LIMIT",
+            "side": "SELL",
+            "quantity": 50.0,
+            "price": 151.00
+        },
+        {
+            "id": "ORDER_003",
+            "symbol": "MSFT",
+            "type": "MARKET",
+            "side": "BUY",
+            "quantity": 200.0,
+            "price": 0.0
+        },
+        {
+            "id": "ORDER_004",
+            "symbol": "GOOGL",
+            "type": "STOP",
+            "side": "SELL",
+            "quantity": 75.0,
+            "price": 2500.00
+        }
+    ],
+    "invalid_orders": [
+        {
+            "id": "INVALID_001",
+            "symbol": "",
+            "type": "LIMIT",
+            "side": "BUY",
+            "quantity": -10.0,
+            "price": 100.0,
+            "expected_error": "INVALID_SYMBOL"
+        },
+        {
+            "id": "INVALID_002",
+            "symbol": "AAPL",
+            "type": "LIMIT",
+            "side": "BUY",
+            "quantity": 0.0,
+            "price": 100.0,
+            "expected_error": "INVALID_QUANTITY"
+        }
+    ]
+} 

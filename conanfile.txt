@@ -1,0 +1,31 @@
+[requires]
+# HTTP server library (alternative: cpp-httplib/0.15.3, pistache/cci.20220913)
+# JSON library - newer version for C++23 compatibility
+nlohmann_json/3.11.3
+# Logging library - latest version for C++23
+spdlog/1.12.0
+# Kafka/Redpanda client (if using librdkafka)
+# librdkafka/2.3.0
+# Testing (Google Test is handled by CMake FetchContent)
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[options]
+# HTTP library options
+# cpp-httplib:with_openssl=True
+# spdlog options
+spdlog:shared=False
+# JSON library options for C++23
+nlohmann_json:implicit_conversions=True
+
+[imports]
+# Copy shared libraries to build directory
+*, *.dll -> ./bin
+*, *.dylib* -> ./bin
+*, *.so* -> ./bin
+
+[settings]
+# Specify C++23 standard
+compiler.cppstd=23 
