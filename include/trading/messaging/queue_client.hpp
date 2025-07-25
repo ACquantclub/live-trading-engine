@@ -1,10 +1,14 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
+
+#include <librdkafka/rdkafkacpp.h>
 
 namespace trading {
 namespace messaging {
@@ -49,8 +53,15 @@ class QueueClient {
 
     std::map<std::string, MessageHandler> topic_handlers_;
 
+    std::unique_ptr<RdKafka::Producer> producer_;
+    std::unique_ptr<RdKafka::KafkaConsumer> consumer_;
+    std::atomic<bool> running_;
+    std::thread message_thread_;
+
     void processMessages();
     bool validateTopic(const std::string& topic) const;
+    bool validateBrokerAddress(const std::string& brokers) const;
+    bool isValidIpAddress(const std::string& ip) const;
 };
 
 }  // namespace messaging

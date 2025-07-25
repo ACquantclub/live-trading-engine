@@ -11,14 +11,67 @@ enable_testing()
 
 # Find packages
 find_package(Threads REQUIRED)
+find_package(PkgConfig QUIET)
 
-# Include FetchContent for Google Test
+# Try to find librdkafka first
+if(PkgConfig_FOUND)
+    pkg_check_modules(RdKafka QUIET rdkafka rdkafka++)
+endif()
+
+# Include FetchContent for dependencies
 include(FetchContent)
+
+# Google Test
 FetchContent_Declare(
   googletest
   URL https://github.com/google/googletest/archive/v1.14.0.zip
   DOWNLOAD_EXTRACT_TIMESTAMP ON
 )
+
+# librdkafka setup
+if(RdKafka_FOUND)
+    message(STATUS "Found system librdkafka: ${RdKafka_VERSION}")
+    
+    # Create imported targets for system librdkafka
+    if(NOT TARGET RdKafka::rdkafka)
+        add_library(RdKafka::rdkafka INTERFACE IMPORTED)
+        target_link_libraries(RdKafka::rdkafka INTERFACE ${RdKafka_LIBRARIES})
+        target_include_directories(RdKafka::rdkafka INTERFACE ${RdKafka_INCLUDE_DIRS})
+        target_compile_options(RdKafka::rdkafka INTERFACE ${RdKafka_CFLAGS_OTHER})
+    endif()
+    
+    if(NOT TARGET RdKafka::rdkafka++)
+        add_library(RdKafka::rdkafka++ INTERFACE IMPORTED)
+        target_link_libraries(RdKafka::rdkafka++ INTERFACE ${RdKafka_LIBRARIES})
+        target_include_directories(RdKafka::rdkafka++ INTERFACE ${RdKafka_INCLUDE_DIRS})
+        target_compile_options(RdKafka::rdkafka++ INTERFACE ${RdKafka_CFLAGS_OTHER})
+    endif()
+else()
+    message(STATUS "librdkafka not found system-wide, downloading...")
+    FetchContent_Declare(
+      librdkafka
+      GIT_REPOSITORY https://github.com/confluentinc/librdkafka.git
+      GIT_TAG v2.3.0
+      GIT_SHALLOW TRUE
+    )
+    
+    # Configure librdkafka options
+    set(RDKAFKA_BUILD_STATIC ON CACHE BOOL "Build static library")
+    set(RDKAFKA_BUILD_SHARED OFF CACHE BOOL "Build shared library") 
+    set(RDKAFKA_BUILD_TESTS OFF CACHE BOOL "Build tests")
+    set(RDKAFKA_BUILD_EXAMPLES OFF CACHE BOOL "Build examples")
+    set(WITH_SASL OFF CACHE BOOL "Enable SASL support")
+    set(WITH_SSL ON CACHE BOOL "Enable SSL support")
+    set(WITH_ZLIB ON CACHE BOOL "Enable zlib support")
+    set(WITH_ZSTD ON CACHE BOOL "Enable zstd support")
+    
+    FetchContent_MakeAvailable(librdkafka)
+    
+    # Create aliases for consistency
+    add_library(RdKafka::rdkafka ALIAS rdkafka)
+    add_library(RdKafka::rdkafka++ ALIAS rdkafka++)
+endif()
+
 FetchContent_MakeAvailable(googletest)
 
 # Include directories
@@ -39,7 +92,15 @@ endif()
 file(GLOB_RECURSE TRADING_SOURCES "src/*.cpp")
 add_library(trading_engine ${TRADING_SOURCES})
 target_include_directories(trading_engine PUBLIC ${CMAKE_SOURCE_DIR}/include)
-target_link_libraries(trading_engine Threads::Threads)
+
+# Link libraries
+target_link_libraries(trading_engine 
+    PUBLIC 
+        Threads::Threads
+    PRIVATE
+        RdKafka::rdkafka++
+        RdKafka::rdkafka
+)
 
 # Add subdirectories
 add_subdirectory(apps)

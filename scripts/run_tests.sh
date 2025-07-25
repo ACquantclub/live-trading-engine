@@ -17,13 +17,17 @@ if [ ! -d "$BUILD_DIR" ]; then
     exit 1
 fi
 
-cd "$BUILD_DIR"
+# Check if we have any tests to run
+UNIT_TEST_PATH="$BUILD_DIR/tests/unit_tests"
+INTEGRATION_TEST_PATH="$BUILD_DIR/tests/integration_tests"
 
 # Run unit tests if they exist
-if [ -f "unit_tests" ]; then
+if [ -f "$UNIT_TEST_PATH" ]; then
     echo -e "${YELLOW}Running unit tests...${NC}"
-    ./unit_tests --gtest_output=xml:unit_test_results.xml
+    cd "$BUILD_DIR"
+    ./tests/unit_tests --gtest_output=xml:unit_test_results.xml
     UNIT_TEST_RESULT=$?
+    cd ..
     
     if [ $UNIT_TEST_RESULT -eq 0 ]; then
         echo -e "${GREEN}Unit tests passed!${NC}"
@@ -31,15 +35,17 @@ if [ -f "unit_tests" ]; then
         echo -e "${RED}Unit tests failed!${NC}"
     fi
 else
-    echo -e "${YELLOW}No unit tests found to run${NC}"
+    echo -e "${YELLOW}No unit tests found at $UNIT_TEST_PATH${NC}"
     UNIT_TEST_RESULT=0
 fi
 
 # Run integration tests if they exist
-if [ -f "integration_tests" ]; then
+if [ -f "$INTEGRATION_TEST_PATH" ]; then
     echo -e "${YELLOW}Running integration tests...${NC}"
-    ./integration_tests --gtest_output=xml:integration_test_results.xml
+    cd "$BUILD_DIR"
+    ./tests/integration_tests --gtest_output=xml:integration_test_results.xml
     INTEGRATION_TEST_RESULT=$?
+    cd ..
     
     if [ $INTEGRATION_TEST_RESULT -eq 0 ]; then
         echo -e "${GREEN}Integration tests passed!${NC}"
@@ -47,12 +53,25 @@ if [ -f "integration_tests" ]; then
         echo -e "${RED}Integration tests failed!${NC}"
     fi
 else
-    echo -e "${YELLOW}No integration tests found to run${NC}"
+    echo -e "${YELLOW}No integration tests found at $INTEGRATION_TEST_PATH${NC}"
     INTEGRATION_TEST_RESULT=0
 fi
 
+# Alternative: Use CTest (recommended approach)
+echo -e "${YELLOW}Running tests via CTest...${NC}"
+cd "$BUILD_DIR"
+ctest --output-on-failure
+CTEST_RESULT=$?
+cd ..
+
+if [ $CTEST_RESULT -eq 0 ]; then
+    echo -e "${GREEN}CTest passed!${NC}"
+else
+    echo -e "${RED}CTest failed!${NC}"
+fi
+
 # Overall result
-if [ $UNIT_TEST_RESULT -eq 0 ] && [ $INTEGRATION_TEST_RESULT -eq 0 ]; then
+if [ $UNIT_TEST_RESULT -eq 0 ] && [ $INTEGRATION_TEST_RESULT -eq 0 ] && [ $CTEST_RESULT -eq 0 ]; then
     echo -e "${GREEN}All tests passed!${NC}"
     exit 0
 else
