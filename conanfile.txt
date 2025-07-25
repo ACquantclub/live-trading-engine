@@ -1,24 +1,13 @@
-[requires]
-# HTTP server library (alternative: cpp-httplib/0.15.3, pistache/cci.20220913)
-# JSON library - newer version for C++23 compatibility
-nlohmann_json/3.11.3
-# Logging library - latest version for C++23
-spdlog/1.12.0
-# Kafka/Redpanda client (if using librdkafka)
-# librdkafka/2.3.0
+# [requires] - Currently no external dependencies needed
+# Dependencies will be added when actually used in the code:
+# nlohmann_json/3.11.3  # For JSON parsing
+# spdlog/1.12.0         # For structured logging  
+# librdkafka/2.3.0      # For Kafka/Redpanda integration
 # Testing (Google Test is handled by CMake FetchContent)
 
-[generators]
-CMakeDeps
-CMakeToolchain
+# [generators] - Not needed when no dependencies are specified
+# CMakeDeps
+# CMakeToolchain
 
-[options]
-# HTTP library options
-# cpp-httplib:with_openssl=True
-# spdlog options
-spdlog:shared=False
-# JSON library options for C++23
-nlohmann_json:implicit_conversions=True
-
-# Note: Conan 2.x - settings are now passed via command line, not in conanfile.txt
-# Use: conan install . -s compiler.cppstd=23 
+# Note: When dependencies are added, uncomment the generators section above
+# and use: conan install . -s compiler.cppstd=23 

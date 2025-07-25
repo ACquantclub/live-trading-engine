@@ -54,26 +54,16 @@ jobs:
           ${{ matrix.config.cc }} \
           ${{ matrix.config.cxx }} \
           clang-format \
-          clang-tidy \
-          python3 \
-          python3-pip
+          clang-tidy
         
-        # Install Conan 2.x (compatible with Python 3.12)
-        pip3 install conan>=2.0.5
-        
-        # Configure Conan
-        conan profile detect --force
+        # No Conan setup needed currently (no external dependencies)
 
     - name: Install dependencies (macOS)  
       if: startsWith(matrix.config.os, 'macos')
       run: |
-        brew install cmake ninja llvm python3
+                brew install cmake ninja llvm
         
-        # Install Conan 2.x (compatible with Python 3.12)
-        pip3 install --break-system-packages conan>=2.0.5
-        
-        # Configure Conan  
-        conan profile detect --force
+        # No Conan setup needed currently (no external dependencies)
         
         # Add LLVM to PATH for clang-format and clang-tidy
         echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
@@ -83,17 +73,13 @@ jobs:
         export CC=${{ matrix.config.cc }}
         export CXX=${{ matrix.config.cxx }}
         
-        # Install Conan dependencies
+        # Configure CMake (no Conan dependencies needed currently)
         mkdir -p build
         cd build
-        conan install .. --build=missing -s build_type=${{ matrix.config.build_type }} -s compiler.cppstd=23 -s compiler=${{ matrix.config.cc == 'clang-15' && 'clang' || (matrix.config.cc == 'clang' && 'clang' || 'gcc') }} -s compiler.version=${{ matrix.config.cc == 'clang-15' && '15' || (matrix.config.cc == 'clang' && '15' || '12') }}
-        
-        # Configure CMake
         cmake .. \
           -G Ninja \
           -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} \
-          -DCMAKE_CXX_STANDARD=23 \
-          -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake
+          -DCMAKE_CXX_STANDARD=23
 
     - name: Build
       run: |
@@ -129,15 +115,9 @@ jobs:
           gcc-12 \
           g++-12 \
           clang-format \
-          clang-tidy \
-          python3 \
-          python3-pip
+          clang-tidy
         
-        # Install Conan 2.x (compatible with Python 3.12)
-        pip3 install conan>=2.0.5
-        
-        # Configure Conan
-        conan profile detect --force
+        # No Conan setup needed currently (no external dependencies)
 
     - name: Check formatting
       run: |
@@ -148,17 +128,13 @@ jobs:
         export CC=gcc-12
         export CXX=g++-12
         
-        # Install Conan dependencies
+        # Configure CMake for linting (no Conan dependencies needed currently)
         mkdir -p build
         cd build
-        conan install .. --build=missing -s build_type=Release -s compiler.cppstd=23 -s compiler=gcc -s compiler.version=12
-        
-        # Configure CMake for linting
         cmake .. \
           -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_CXX_STANDARD=23 \
-          -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake \
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
     - name: Run static analysis
@@ -183,32 +159,22 @@ jobs:
           cmake \
           ninja-build \
           gcc-12 \
-          g++-12 \
-          python3 \
-          python3-pip
+          g++-12
         
-        # Install Conan 2.x (compatible with Python 3.12)
-        pip3 install conan>=2.0.5
-        
-        # Configure Conan
-        conan profile detect --force
+        # No Conan setup needed currently (no external dependencies)
 
     - name: Configure and build
       run: |
         export CC=gcc-12
         export CXX=g++-12
         
-        # Install Conan dependencies
+        # Configure and build (no Conan dependencies needed currently)
         mkdir -p build
         cd build
-        conan install .. --build=missing -s build_type=Release -s compiler.cppstd=23 -s compiler=gcc -s compiler.version=12
-        
-        # Configure and build
         cmake .. \
           -G Ninja \
           -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_CXX_STANDARD=23 \
-          -DCMAKE_TOOLCHAIN_FILE=conan_toolchain.cmake
+          -DCMAKE_CXX_STANDARD=23
         ninja
 
     - name: Perform CodeQL Analysis
