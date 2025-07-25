@@ -58,24 +58,22 @@ jobs:
           python3 \
           python3-pip
         
-        # Install Conan
-        pip3 install conan==1.61.0
+        # Install Conan 2.x (compatible with Python 3.12)
+        pip3 install conan>=2.0.5
         
         # Configure Conan
         conan profile detect --force
-        conan profile update settings.compiler.cppstd=23 default
 
     - name: Install dependencies (macOS)  
       if: startsWith(matrix.config.os, 'macos')
       run: |
         brew install cmake ninja llvm python3
         
-        # Install Conan
-        pip3 install conan==1.61.0
+        # Install Conan 2.x (compatible with Python 3.12)
+        pip3 install conan>=2.0.5
         
         # Configure Conan
         conan profile detect --force
-        conan profile update settings.compiler.cppstd=23 default
         
         # Add LLVM to PATH for clang-format and clang-tidy
         echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
@@ -88,7 +86,7 @@ jobs:
         # Install Conan dependencies
         mkdir -p build
         cd build
-        conan install .. --build=missing -s build_type=${{ matrix.config.build_type }}
+        conan install .. --build=missing -s build_type=${{ matrix.config.build_type }} -s compiler.cppstd=23
         
         # Configure CMake
         cmake .. \
@@ -135,12 +133,11 @@ jobs:
           python3 \
           python3-pip
         
-        # Install Conan
-        pip3 install conan==1.61.0
+        # Install Conan 2.x (compatible with Python 3.12)
+        pip3 install conan>=2.0.5
         
         # Configure Conan
         conan profile detect --force
-        conan profile update settings.compiler.cppstd=23 default
 
     - name: Check formatting
       run: |
@@ -154,7 +151,7 @@ jobs:
         # Install Conan dependencies
         mkdir -p build
         cd build
-        conan install .. --build=missing -s build_type=Release
+        conan install .. --build=missing -s build_type=Release -s compiler.cppstd=23
         
         # Configure CMake for linting
         cmake .. \
@@ -190,12 +187,11 @@ jobs:
           python3 \
           python3-pip
         
-        # Install Conan
-        pip3 install conan==1.61.0
+        # Install Conan 2.x (compatible with Python 3.12)
+        pip3 install conan>=2.0.5
         
         # Configure Conan
         conan profile detect --force
-        conan profile update settings.compiler.cppstd=23 default
 
     - name: Configure and build
       run: |
@@ -205,7 +201,7 @@ jobs:
         # Install Conan dependencies
         mkdir -p build
         cd build
-        conan install .. --build=missing -s build_type=Release
+        conan install .. --build=missing -s build_type=Release -s compiler.cppstd=23
         
         # Configure and build
         cmake .. \
