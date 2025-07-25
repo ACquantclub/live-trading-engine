@@ -63,6 +63,8 @@ jobs:
         
         # Configure Conan
         conan profile detect --force
+        conan profile update settings.compiler=${{ matrix.config.cc == 'clang-15' && 'clang' || 'gcc' }} default
+        conan profile update settings.compiler.version=${{ matrix.config.cc == 'clang-15' && '15' || '12' }} default
 
     - name: Install dependencies (macOS)  
       if: startsWith(matrix.config.os, 'macos')
@@ -70,10 +72,11 @@ jobs:
         brew install cmake ninja llvm python3
         
         # Install Conan 2.x (compatible with Python 3.12)
-        pip3 install conan>=2.0.5
+        pip3 install --break-system-packages conan>=2.0.5
         
-        # Configure Conan
+        # Configure Conan  
         conan profile detect --force
+        conan profile update settings.compiler=clang default
         
         # Add LLVM to PATH for clang-format and clang-tidy
         echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
@@ -137,7 +140,9 @@ jobs:
         pip3 install conan>=2.0.5
         
         # Configure Conan
-        conan profile detect --force
+        conan profile detect --force  
+        conan profile update settings.compiler=gcc default
+        conan profile update settings.compiler.version=12 default
 
     - name: Check formatting
       run: |
@@ -192,6 +197,8 @@ jobs:
         
         # Configure Conan
         conan profile detect --force
+        conan profile update settings.compiler=gcc default  
+        conan profile update settings.compiler.version=12 default
 
     - name: Configure and build
       run: |

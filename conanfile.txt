@@ -20,12 +20,5 @@ spdlog:shared=False
 # JSON library options for C++23
 nlohmann_json:implicit_conversions=True
 
-[imports]
-# Copy shared libraries to build directory
-*, *.dll -> ./bin
-*, *.dylib* -> ./bin
-*, *.so* -> ./bin
-
-[settings]
-# Specify C++23 standard
-compiler.cppstd=23 
+# Note: Conan 2.x - settings are now passed via command line, not in conanfile.txt
+# Use: conan install . -s compiler.cppstd=23 
