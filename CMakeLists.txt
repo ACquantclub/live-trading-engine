@@ -37,16 +37,22 @@ if(Librdkafka_FOUND AND LibrdkafkaCpp_FOUND)
     # Create imported targets for system librdkafka
     if(NOT TARGET RdKafka::rdkafka)
         add_library(RdKafka::rdkafka INTERFACE IMPORTED)
-        set_property(TARGET RdKafka::rdkafka PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${Librdkafka_INCLUDE_DIRS}")
-        set_property(TARGET RdKafka::rdkafka PROPERTY INTERFACE_LINK_LIBRARIES "${Librdkafka_LIBRARIES}")
-        set_property(TARGET RdKafka::rdkafka PROPERTY INTERFACE_COMPILE_OPTIONS "${Librdkafka_CFLAGS_OTHER}")
+        set_target_properties(RdKafka::rdkafka PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${Librdkafka_INCLUDE_DIRS}"
+            INTERFACE_LINK_DIRECTORIES "${Librdkafka_LIBRARY_DIRS}"
+            INTERFACE_LINK_LIBRARIES "${Librdkafka_LIBRARIES}"
+            INTERFACE_COMPILE_OPTIONS "${Librdkafka_CFLAGS_OTHER}"
+        )
     endif()
     
     if(NOT TARGET RdKafka::rdkafka++)
         add_library(RdKafka::rdkafka++ INTERFACE IMPORTED)
-        set_property(TARGET RdKafka::rdkafka++ PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${LibrdkafkaCpp_INCLUDE_DIRS}")
-        set_property(TARGET RdKafka::rdkafka++ PROPERTY INTERFACE_LINK_LIBRARIES "${LibrdkafkaCpp_LIBRARIES}")
-        set_property(TARGET RdKafka::rdkafka++ PROPERTY INTERFACE_COMPILE_OPTIONS "${LibrdkafkaCpp_CFLAGS_OTHER}")
+        set_target_properties(RdKafka::rdkafka++ PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${LibrdkafkaCpp_INCLUDE_DIRS}"
+            INTERFACE_LINK_DIRECTORIES "${LibrdkafkaCpp_LIBRARY_DIRS}"
+            INTERFACE_LINK_LIBRARIES "${LibrdkafkaCpp_LIBRARIES}"
+            INTERFACE_COMPILE_OPTIONS "${LibrdkafkaCpp_CFLAGS_OTHER}"
+        )
     endif()
 else()
     message(STATUS "librdkafka not found system-wide, downloading...")
