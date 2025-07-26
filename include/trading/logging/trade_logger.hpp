@@ -23,7 +23,7 @@ struct TradeConfirmation {
 class TradeLogger {
   public:
     TradeLogger(const std::string& log_file_path);
-    ~TradeLogger();
+    virtual ~TradeLogger();
 
     // Logging methods
     virtual void logTrade(const core::Trade& trade);

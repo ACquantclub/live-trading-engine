@@ -11,7 +11,7 @@ namespace logging {
 class AppLogger {
   public:
     explicit AppLogger(const std::string& log_file_path);
-    ~AppLogger();
+    virtual ~AppLogger();
 
     AppLogger(const AppLogger&) = delete;
     AppLogger& operator=(const AppLogger&) = delete;

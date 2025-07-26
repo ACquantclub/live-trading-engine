@@ -13,9 +13,10 @@ enable_testing()
 find_package(Threads REQUIRED)
 find_package(PkgConfig QUIET)
 
-# Try to find librdkafka first
+# Try to find librdkafka and rdkafka++ separately
 if(PkgConfig_FOUND)
-    pkg_check_modules(RdKafka QUIET rdkafka rdkafka++)
+    pkg_check_modules(Librdkafka QUIET rdkafka)
+    pkg_check_modules(LibrdkafkaCpp QUIET rdkafka++)
 endif()
 
 # Include FetchContent for dependencies
@@ -29,22 +30,23 @@ FetchContent_Declare(
 )
 
 # librdkafka setup
-if(RdKafka_FOUND)
-    message(STATUS "Found system librdkafka: ${RdKafka_VERSION}")
-    
+if(Librdkafka_FOUND AND LibrdkafkaCpp_FOUND)
+    message(STATUS "Found system librdkafka: ${Librdkafka_VERSION}")
+    message(STATUS "Found system librdkafka++: ${LibrdkafkaCpp_VERSION}")
+
     # Create imported targets for system librdkafka
     if(NOT TARGET RdKafka::rdkafka)
         add_library(RdKafka::rdkafka INTERFACE IMPORTED)
-        target_link_libraries(RdKafka::rdkafka INTERFACE ${RdKafka_LIBRARIES})
-        target_include_directories(RdKafka::rdkafka INTERFACE ${RdKafka_INCLUDE_DIRS})
-        target_compile_options(RdKafka::rdkafka INTERFACE ${RdKafka_CFLAGS_OTHER})
+        set_property(TARGET RdKafka::rdkafka PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${Librdkafka_INCLUDE_DIRS}")
+        set_property(TARGET RdKafka::rdkafka PROPERTY INTERFACE_LINK_LIBRARIES "${Librdkafka_LIBRARIES}")
+        set_property(TARGET RdKafka::rdkafka PROPERTY INTERFACE_COMPILE_OPTIONS "${Librdkafka_CFLAGS_OTHER}")
     endif()
     
     if(NOT TARGET RdKafka::rdkafka++)
         add_library(RdKafka::rdkafka++ INTERFACE IMPORTED)
-        target_link_libraries(RdKafka::rdkafka++ INTERFACE ${RdKafka_LIBRARIES})
-        target_include_directories(RdKafka::rdkafka++ INTERFACE ${RdKafka_INCLUDE_DIRS})
-        target_compile_options(RdKafka::rdkafka++ INTERFACE ${RdKafka_CFLAGS_OTHER})
+        set_property(TARGET RdKafka::rdkafka++ PROPERTY INTERFACE_INCLUDE_DIRECTORIES "${LibrdkafkaCpp_INCLUDE_DIRS}")
+        set_property(TARGET RdKafka::rdkafka++ PROPERTY INTERFACE_LINK_LIBRARIES "${LibrdkafkaCpp_LIBRARIES}")
+        set_property(TARGET RdKafka::rdkafka++ PROPERTY INTERFACE_COMPILE_OPTIONS "${LibrdkafkaCpp_CFLAGS_OTHER}")
     endif()
 else()
     message(STATUS "librdkafka not found system-wide, downloading...")
