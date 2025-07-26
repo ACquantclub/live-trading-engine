@@ -2,6 +2,7 @@
 #include "trading/core/order.hpp"
 #include "trading/core/orderbook.hpp"
 #include "trading/execution/executor.hpp"
+#include "trading/logging/app_logger.hpp"
 #include "trading/logging/trade_logger.hpp"
 #include "trading/messaging/queue_client.hpp"
 #include "trading/network/http_server.hpp"
@@ -20,7 +21,8 @@ class TradingEngine {
   public:
     TradingEngine()
         : config_(std::make_shared<utils::Config>()),
-          logger_(std::make_shared<logging::TradeLogger>("trading_engine.log")),
+          trade_logger_(std::make_shared<logging::TradeLogger>("trading_engine.log")),
+          app_logger_(std::make_shared<logging::AppLogger>("app.log")),
           validator_(std::make_shared<validation::OrderValidator>()),
           executor_(std::make_shared<execution::Executor>()),
           matching_engine_(std::make_shared<core::MatchingEngine>()),
@@ -32,7 +34,8 @@ class TradingEngine {
     bool initialize(const std::string& config_file) {
         // Load configuration
         if (!config_->loadFromFile(config_file)) {
-            std::cerr << "Failed to load configuration from: " << config_file << std::endl;
+            app_logger_->log(logging::LogLevel::ERROR,
+                             "Failed to load configuration from: " + config_file);
             return false;
         }
 
@@ -43,12 +46,13 @@ class TradingEngine {
 
         // Initialize queue client
         std::string brokers = config_->getString("redpanda.brokers", "localhost:9092");
-        queue_client_ = std::make_unique<messaging::QueueClient>(brokers);
+        queue_client_ = std::make_unique<messaging::QueueClient>(brokers, app_logger_);
 
         // Setup callbacks
         setupCallbacks();
 
-        logger_->logMessage(logging::LogLevel::INFO, "Trading engine initialized successfully");
+        trade_logger_->logMessage(logging::LogLevel::INFO,
+                                  "Trading engine initialized successfully");
         return true;
     }
 
@@ -59,18 +63,19 @@ class TradingEngine {
 
         // Start HTTP server
         if (!http_server_->start()) {
-            logger_->logMessage(logging::LogLevel::ERROR, "Failed to start HTTP server");
+            trade_logger_->logMessage(logging::LogLevel::ERROR, "Failed to start HTTP server");
             return false;
         }
 
         // Connect to message queue
         if (!queue_client_->connect()) {
-            logger_->logMessage(logging::LogLevel::ERROR, "Failed to connect to message queue");
+            trade_logger_->logMessage(logging::LogLevel::ERROR,
+                                      "Failed to connect to message queue");
             return false;
         }
 
         running_ = true;
-        logger_->logMessage(logging::LogLevel::INFO, "Trading engine started");
+        trade_logger_->logMessage(logging::LogLevel::INFO, "Trading engine started");
         return true;
     }
 
@@ -89,7 +94,7 @@ class TradingEngine {
             queue_client_->disconnect();
         }
 
-        logger_->logMessage(logging::LogLevel::INFO, "Trading engine stopped");
+        trade_logger_->logMessage(logging::LogLevel::INFO, "Trading engine stopped");
     }
 
     bool isRunning() const {
@@ -135,23 +140,24 @@ class TradingEngine {
     }
 
     void handleTrade(const core::Trade& trade) {
-        logger_->logTrade(trade);
+        trade_logger_->logTrade(trade);
 
         // Execute the trade
         execution::ExecutionResult result = executor_->execute(trade);
 
         // Create and send confirmation
-        auto confirmation = logger_->createConfirmation(trade);
-        logger_->sendConfirmation(confirmation);
+        auto confirmation = trade_logger_->createConfirmation(trade);
+        trade_logger_->sendConfirmation(confirmation);
     }
 
     void handleExecution(const execution::ExecutionResult& result) {
-        logger_->logExecution(result);
+        trade_logger_->logExecution(result);
     }
 
   private:
     std::shared_ptr<utils::Config> config_;
-    std::shared_ptr<logging::TradeLogger> logger_;
+    std::shared_ptr<logging::TradeLogger> trade_logger_;
+    std::shared_ptr<logging::AppLogger> app_logger_;
     std::shared_ptr<validation::OrderValidator> validator_;
     std::shared_ptr<execution::Executor> executor_;
     std::shared_ptr<core::MatchingEngine> matching_engine_;
@@ -162,10 +168,14 @@ class TradingEngine {
 
 // Global instance for signal handling
 TradingEngine* g_engine = nullptr;
+std::shared_ptr<logging::AppLogger> g_logger = nullptr;
 
 void signalHandler(int signal) {
     if (g_engine) {
-        std::cout << "\nReceived signal " << signal << ", shutting down..." << std::endl;
+        if (g_logger) {
+            g_logger->log(logging::LogLevel::INFO,
+                          "Received signal " + std::to_string(signal) + ", shutting down...");
+        }
         g_engine->stop();
     }
 }
@@ -181,29 +191,32 @@ int main(int argc, char* argv[]) {
     TradingEngine engine;
     g_engine = &engine;
 
+    // A kludge to get the logger to the signal handler
+    g_logger = std::make_shared<logging::AppLogger>("app.log");
+
     // Setup signal handlers
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
 
     // Initialize engine
     if (!engine.initialize(config_file)) {
-        std::cerr << "Failed to initialize trading engine" << std::endl;
+        g_logger->log(logging::LogLevel::ERROR, "Failed to initialize trading engine");
         return 1;
     }
 
     // Start engine
     if (!engine.start()) {
-        std::cerr << "Failed to start trading engine" << std::endl;
+        g_logger->log(logging::LogLevel::ERROR, "Failed to start trading engine");
         return 1;
     }
 
-    std::cout << "Trading engine started. Press Ctrl+C to stop." << std::endl;
+    g_logger->log(logging::LogLevel::INFO, "Trading engine started. Press Ctrl+C to stop.");
 
     // Main loop
     while (engine.isRunning()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    std::cout << "Trading engine stopped." << std::endl;
+    g_logger->log(logging::LogLevel::INFO, "Trading engine stopped.");
     return 0;
 }

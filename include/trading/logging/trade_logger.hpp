@@ -5,11 +5,10 @@
 #include <string>
 #include "../core/matching_engine.hpp"
 #include "../execution/executor.hpp"
+#include "log_level.hpp"
 
 namespace trading {
 namespace logging {
-
-enum class LogLevel { DEBUG, INFO, WARNING, ERROR };
 
 struct TradeConfirmation {
     std::string confirmation_id;
@@ -24,16 +23,16 @@ struct TradeConfirmation {
 class TradeLogger {
   public:
     TradeLogger(const std::string& log_file_path);
-    ~TradeLogger();
+    virtual ~TradeLogger();
 
     // Logging methods
-    void logTrade(const core::Trade& trade);
-    void logExecution(const execution::ExecutionResult& result);
-    void logMessage(LogLevel level, const std::string& message);
+    virtual void logTrade(const core::Trade& trade);
+    virtual void logExecution(const execution::ExecutionResult& result);
+    virtual void logMessage(LogLevel level, const std::string& message);
 
     // Confirmation methods
-    TradeConfirmation createConfirmation(const core::Trade& trade);
-    bool sendConfirmation(const TradeConfirmation& confirmation);
+    virtual TradeConfirmation createConfirmation(const core::Trade& trade);
+    virtual bool sendConfirmation(const TradeConfirmation& confirmation);
 
     // Configuration
     void setLogLevel(LogLevel level);

@@ -61,16 +61,17 @@ jobs:
           libc++-18-dev \
           libc++abi-18-dev \
           clang-format \
-          clang-tidy
-        
-        # No Conan setup needed currently (no external dependencies)
+          clang-tidy \
+          librdkafka-dev \
+          libssl-dev \
+          libzstd-dev \
+          zlib1g-dev \
+          pkg-config
 
     - name: Install dependencies (macOS)  
       if: startsWith(matrix.config.os, 'macos')
       run: |
-        brew install cmake ninja llvm
-        
-        # No Conan setup needed currently (no external dependencies)
+        brew install cmake ninja llvm librdkafka openssl zstd zlib pkg-config
         
         # Add LLVM to PATH for clang-format and clang-tidy
         echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
@@ -122,9 +123,12 @@ jobs:
           gcc-12 \
           g++-12 \
           clang-format \
-          clang-tidy
-        
-        # No Conan setup needed currently (no external dependencies)
+          clang-tidy \
+          librdkafka-dev \
+          libssl-dev \
+          libzstd-dev \
+          zlib1g-dev \
+          pkg-config
 
     - name: Check formatting
       run: |
@@ -166,9 +170,12 @@ jobs:
           cmake \
           ninja-build \
           gcc-12 \
-          g++-12
-        
-        # No Conan setup needed currently (no external dependencies)
+          g++-12 \
+          librdkafka-dev \
+          libssl-dev \
+          libzstd-dev \
+          zlib1g-dev \
+          pkg-config
 
     - name: Configure and build
       run: |

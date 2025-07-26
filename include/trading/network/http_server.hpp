@@ -43,7 +43,7 @@ class HttpServer {
 
   private:
     std::string host_;
-    int port_;
+    [[maybe_unused]] int port_;  // TODO: Use when implementing HTTP server
     bool running_;
     int timeout_seconds_;
     int max_connections_;

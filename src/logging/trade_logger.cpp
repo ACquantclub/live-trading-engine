@@ -1,4 +1,5 @@
 #include "trading/logging/trade_logger.hpp"
+#include "trading/logging/log_level.hpp"
 #include <chrono>
 #include <iomanip>
 #include <iostream>
