@@ -69,7 +69,7 @@ TEST_F(QueueClientTest, PublishWithoutConnection) {
 
 // Test subscribe without connection (should fail gracefully)
 TEST_F(QueueClientTest, SubscribeWithoutConnection) {
-    auto handler = [](const Message& msg) {
+    auto handler = [](const Message& /*msg*/) {
         // Simple handler
     };
 
@@ -85,8 +85,8 @@ TEST_F(QueueClientTest, UnsubscribeWithoutConnection) {
 
 // Test multiple subscribe/unsubscribe calls
 TEST_F(QueueClientTest, MultipleSubscriptions) {
-    auto handler1 = [](const Message& msg) {};
-    auto handler2 = [](const Message& msg) {};
+    auto handler1 = [](const Message& /*msg*/) {};
+    auto handler2 = [](const Message& /*msg*/) {};
 
     // Without connection, should return false
     EXPECT_FALSE(client->subscribe("topic1", handler1));
