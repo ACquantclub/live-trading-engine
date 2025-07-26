@@ -1,4 +1,5 @@
 #include "trading/messaging/queue_client.hpp"
+#include "trading/logging/app_logger.hpp"
 #include <chrono>
 #include <iostream>
 #include <sstream>
@@ -6,8 +7,12 @@
 namespace trading {
 namespace messaging {
 
-QueueClient::QueueClient(const std::string& brokers)
-    : brokers_(brokers), connected_(false), timeout_ms_(5000), batch_size_(100) {
+QueueClient::QueueClient(const std::string& brokers, std::shared_ptr<logging::AppLogger> logger)
+    : brokers_(brokers),
+      connected_(false),
+      timeout_ms_(5000),
+      batch_size_(100),
+      logger_(std::move(logger)) {
 }
 
 QueueClient::~QueueClient() {
@@ -21,7 +26,7 @@ bool QueueClient::connect() {
 
     // Check for valid broker address
     if (!validateBrokerAddress(brokers_)) {
-        std::cerr << "Invalid broker address: " << brokers_ << std::endl;
+        logger_->log(logging::LogLevel::ERROR, "Invalid broker address: " + brokers_);
         return false;
     }
 
@@ -29,7 +34,8 @@ bool QueueClient::connect() {
     auto producer_conf =
         std::unique_ptr<RdKafka::Conf>(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
     if (producer_conf->set("bootstrap.servers", brokers_, errstr) != RdKafka::Conf::CONF_OK) {
-        std::cerr << "Failed to set bootstrap servers for producer: " << errstr << std::endl;
+        logger_->log(logging::LogLevel::ERROR,
+                     "Failed to set bootstrap servers for producer: " + errstr);
         return false;
     }
 
@@ -37,7 +43,7 @@ bool QueueClient::connect() {
     producer_ =
         std::unique_ptr<RdKafka::Producer>(RdKafka::Producer::create(producer_conf.get(), errstr));
     if (!producer_) {
-        std::cerr << "Failed to create producer: " << errstr << std::endl;
+        logger_->log(logging::LogLevel::ERROR, "Failed to create producer: " + errstr);
         return false;
     }
 
@@ -45,16 +51,17 @@ bool QueueClient::connect() {
     auto consumer_conf =
         std::unique_ptr<RdKafka::Conf>(RdKafka::Conf::create(RdKafka::Conf::CONF_GLOBAL));
     if (consumer_conf->set("bootstrap.servers", brokers_, errstr) != RdKafka::Conf::CONF_OK) {
-        std::cerr << "Failed to set bootstrap servers for consumer: " << errstr << std::endl;
+        logger_->log(logging::LogLevel::ERROR,
+                     "Failed to set bootstrap servers for consumer: " + errstr);
         return false;
     }
     if (consumer_conf->set("group.id", "trading-engine-consumers", errstr) !=
         RdKafka::Conf::CONF_OK) {
-        std::cerr << "Failed to set group.id: " << errstr << std::endl;
+        logger_->log(logging::LogLevel::ERROR, "Failed to set group.id: " + errstr);
         return false;
     }
     if (consumer_conf->set("auto.offset.reset", "earliest", errstr) != RdKafka::Conf::CONF_OK) {
-        std::cerr << "Failed to set auto.offset.reset: " << errstr << std::endl;
+        logger_->log(logging::LogLevel::ERROR, "Failed to set auto.offset.reset: " + errstr);
         return false;
     }
 
@@ -62,7 +69,7 @@ bool QueueClient::connect() {
     consumer_ = std::unique_ptr<RdKafka::KafkaConsumer>(
         RdKafka::KafkaConsumer::create(consumer_conf.get(), errstr));
     if (!consumer_) {
-        std::cerr << "Failed to create consumer: " << errstr << std::endl;
+        logger_->log(logging::LogLevel::ERROR, "Failed to create consumer: " + errstr);
         return false;
     }
 
@@ -75,7 +82,7 @@ bool QueueClient::connect() {
 bool QueueClient::validateBrokerAddress(const std::string& brokers) const {
     // Check if broker address is non-empty
     if (brokers.empty()) {
-        std::cerr << "No broker address provided" << std::endl;
+        logger_->log(logging::LogLevel::ERROR, "No broker address provided");
         return false;
     }
 
@@ -92,7 +99,8 @@ bool QueueClient::validateBrokerAddress(const std::string& brokers) const {
         // Check if broker address is in the format "host:port"
         size_t colon_pos = broker.find(':');
         if (colon_pos == std::string::npos || colon_pos == 0 || colon_pos == broker.length() - 1) {
-            std::cerr << "Invalid broker format: " << broker << ". Expected host:port" << std::endl;
+            logger_->log(logging::LogLevel::ERROR,
+                         "Invalid broker format: " + broker + ". Expected host:port");
             return false;
         }
 
@@ -104,32 +112,32 @@ bool QueueClient::validateBrokerAddress(const std::string& brokers) const {
         try {
             int port_num = std::stoi(port);
             if (port_num <= 0 || port_num > 65535) {
-                std::cerr << "Invalid port number: " << port << ". Must be between 1 and 65535"
-                          << std::endl;
+                logger_->log(logging::LogLevel::ERROR,
+                             "Invalid port number: " + port + ". Must be between 1 and 65535");
                 return false;
             }
             valid = true;
         } catch (const std::exception&) {
-            std::cerr << "Invalid port number: " << port << std::endl;
+            logger_->log(logging::LogLevel::ERROR, "Invalid port number: " + port);
             return false;
         }
 
         // Enhanced host validation
         if (host.empty()) {
-            std::cerr << "Empty host name" << std::endl;
+            logger_->log(logging::LogLevel::ERROR, "Empty host name");
             return false;
         }
 
         // Only allow localhost or IP address format
         if (host != "localhost" && !isValidIpAddress(host)) {
-            std::cerr << "Invalid host: " << host << ". Must be 'localhost' or valid IP address"
-                      << std::endl;
+            logger_->log(logging::LogLevel::ERROR,
+                         "Invalid host: " + host + ". Must be 'localhost' or valid IP address");
             return false;
         }
     }
 
     if (!valid) {
-        std::cerr << "No valid broker addresses found" << std::endl;
+        logger_->log(logging::LogLevel::ERROR, "No valid broker addresses found");
         return false;
     }
 
@@ -176,7 +184,8 @@ bool QueueClient::publish(const Message& message) {
         );
 
     if (err != RdKafka::ERR_NO_ERROR) {
-        std::cerr << "Failed to produce message: " << RdKafka::err2str(err) << std::endl;
+        logger_->log(logging::LogLevel::ERROR,
+                     "Failed to produce message: " + RdKafka::err2str(err));
         return false;
     }
 
@@ -213,7 +222,8 @@ bool QueueClient::subscribe(const std::string& topic, MessageHandler handler) {
     // Subscribe to topics using KafkaConsumer
     RdKafka::ErrorCode err = consumer_->subscribe(topics);
     if (err != RdKafka::ERR_NO_ERROR) {
-        std::cerr << "Failed to subscribe to topics: " << RdKafka::err2str(err) << std::endl;
+        logger_->log(logging::LogLevel::ERROR,
+                     "Failed to subscribe to topics: " + RdKafka::err2str(err));
         return false;
     }
 
@@ -233,8 +243,8 @@ bool QueueClient::unsubscribe(const std::string& topic) {
         // Unsubscribe from all topics
         RdKafka::ErrorCode err = consumer_->unsubscribe();
         if (err != RdKafka::ERR_NO_ERROR) {
-            std::cerr << "Failed to unsubscribe from all topics: " << RdKafka::err2str(err)
-                      << std::endl;
+            logger_->log(logging::LogLevel::ERROR,
+                         "Failed to unsubscribe from all topics: " + RdKafka::err2str(err));
             return false;
         }
     } else {
@@ -245,7 +255,8 @@ bool QueueClient::unsubscribe(const std::string& topic) {
         }
         RdKafka::ErrorCode err = consumer_->subscribe(topics);
         if (err != RdKafka::ERR_NO_ERROR) {
-            std::cerr << "Failed to resubscribe to topics: " << RdKafka::err2str(err) << std::endl;
+            logger_->log(logging::LogLevel::ERROR,
+                         "Failed to resubscribe to topics: " + RdKafka::err2str(err));
             return false;
         }
     }
@@ -296,7 +307,7 @@ void QueueClient::processMessages() {
                 // End of partition, continue
                 break;
             default:
-                std::cerr << "Consumer error: " << kafka_msg->errstr() << std::endl;
+                logger_->log(logging::LogLevel::ERROR, "Consumer error: " + kafka_msg->errstr());
                 break;
         }
     }

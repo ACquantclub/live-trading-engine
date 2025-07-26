@@ -4,16 +4,27 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "trading/logging/app_logger.hpp"
 #include "trading/messaging/queue_client.hpp"
 
 using namespace trading::messaging;
+using namespace trading::logging;
+
+// Mock for AppLogger
+class MockAppLogger : public AppLogger {
+  public:
+    MockAppLogger() : AppLogger("/dev/null") {
+    }
+    MOCK_METHOD(void, log, (LogLevel level, const std::string& message), (override));
+};
 
 // Simple test fixture
 class QueueClientTest : public ::testing::Test {
   protected:
     void SetUp() override {
+        mock_logger_ = std::make_shared<MockAppLogger>();
         // Use a dummy broker address for unit tests
-        client = std::make_unique<QueueClient>("localhost:9092");
+        client = std::make_unique<QueueClient>("localhost:9092", mock_logger_);
     }
 
     void TearDown() override {
@@ -23,6 +34,7 @@ class QueueClientTest : public ::testing::Test {
     }
 
     std::unique_ptr<QueueClient> client;
+    std::shared_ptr<MockAppLogger> mock_logger_;
 };
 
 // Test basic construction
@@ -137,7 +149,7 @@ TEST_F(QueueClientTest, MessageHandler) {
 // Test that client can be destroyed safely
 TEST_F(QueueClientTest, SafeDestruction) {
     // Create and destroy client without connection
-    auto temp_client = std::make_unique<QueueClient>("localhost:9092");
+    auto temp_client = std::make_unique<QueueClient>("localhost:9092", mock_logger_);
     temp_client.reset();  // Should not crash
 
     SUCCEED();
@@ -145,7 +157,13 @@ TEST_F(QueueClientTest, SafeDestruction) {
 
 // Test connection with invalid broker address
 TEST_F(QueueClientTest, InvalidBrokerAddress) {
-    auto invalid_client = std::make_unique<QueueClient>("invalid_broker:9092");
+    // Expect that the logger is called for an invalid host, and then for a generic
+    // invalid broker address.
+    EXPECT_CALL(*mock_logger_, log(LogLevel::ERROR, testing::HasSubstr("Invalid host"))).Times(1);
+    EXPECT_CALL(*mock_logger_, log(LogLevel::ERROR, testing::HasSubstr("Invalid broker address")))
+        .Times(1);
+
+    auto invalid_client = std::make_unique<QueueClient>("invalid_broker:9092", mock_logger_);
     EXPECT_FALSE(invalid_client->connect());
     EXPECT_FALSE(invalid_client->isConnected());
 }
