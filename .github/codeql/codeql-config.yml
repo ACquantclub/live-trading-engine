@@ -1,0 +1,11 @@
+name: "CodeQL Config"
+
+paths-ignore:
+  - deps/csp/**
+  - build/**
+  - third_party/**
+  - "**/test/**"
+  - "**/*test*"
+
+queries:
+  - uses: security-and-quality
