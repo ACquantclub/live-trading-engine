@@ -25,7 +25,7 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
 fi
 
 # Get list of staged files
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp|h|cc)$' || true)
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp|h|cc)$' | grep -v deps/csp/ || true)
 
 if [ -z "$STAGED_FILES" ]; then
     echo -e "${GREEN}No C++ files staged for commit${NC}"
