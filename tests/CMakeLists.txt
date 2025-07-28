@@ -13,6 +13,9 @@ if(UNIT_TEST_SOURCES)
         gmock
         gmock_main
         Threads::Threads
+        csp_core
+        csp_types
+        csp_engine
     )
     
     # Discover tests
