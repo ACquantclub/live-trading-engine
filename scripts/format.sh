@@ -81,6 +81,7 @@ CPP_FILES=$(find . -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.cc"
            grep -E '\.(cpp|hpp|h|cc)$' | \
            grep -v build/ | \
            grep -v third_party/ | \
+           grep -v deps/csp/ | \
            sort)
 
 if [ -z "$CPP_FILES" ]; then

@@ -109,6 +109,7 @@ echo -e "${YELLOW}Using compile database: $COMPILE_DB${NC}"
 SOURCE_FILES=$(find include src apps -name "*.cpp" -o -name "*.hpp" | \
                grep -v build/ | \
                grep -v third_party/ | \
+               grep -v deps/csp/ | \
                sort)
 
 if [ -z "$SOURCE_FILES" ]; then

@@ -66,12 +66,15 @@ jobs:
           libssl-dev \
           libzstd-dev \
           zlib1g-dev \
-          pkg-config
+          pkg-config \
+          rapidjson-dev \
+          libboost-dev \
+          libboost-system-dev
 
     - name: Install dependencies (macOS)  
       if: startsWith(matrix.config.os, 'macos')
       run: |
-        brew install cmake ninja llvm librdkafka openssl zstd zlib pkg-config
+        brew install cmake ninja llvm librdkafka openssl zstd zlib pkg-config rapidjson boost
         
         # Add LLVM to PATH for clang-format and clang-tidy
         echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
@@ -128,7 +131,10 @@ jobs:
           libssl-dev \
           libzstd-dev \
           zlib1g-dev \
-          pkg-config
+          pkg-config \
+          rapidjson-dev \
+          libboost-dev \
+          libboost-system-dev
 
     - name: Check formatting
       run: |
@@ -162,6 +168,7 @@ jobs:
       uses: github/codeql-action/init@v3
       with:
         languages: cpp
+        config-file: ./.github/codeql/codeql-config.yml
 
     - name: Install dependencies
       run: |
@@ -175,7 +182,10 @@ jobs:
           libssl-dev \
           libzstd-dev \
           zlib1g-dev \
-          pkg-config
+          pkg-config \
+          rapidjson-dev \
+          libboost-dev \
+          libboost-system-dev
 
     - name: Configure and build
       run: |

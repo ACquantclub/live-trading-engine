@@ -13,6 +13,30 @@ enable_testing()
 find_package(Threads REQUIRED)
 find_package(PkgConfig QUIET)
 
+# Find RapidJSON for CSP
+find_package(RapidJSON QUIET)
+if(NOT RapidJSON_FOUND)
+    # Fallback to FetchContent if system package not found
+    FetchContent_Declare(
+        rapidjson
+        GIT_REPOSITORY https://github.com/Tencent/rapidjson.git
+        GIT_TAG v1.1.0
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(rapidjson)
+    # RapidJSON is header-only, so we just need to set the include directory
+    if(TARGET rapidjson)
+        get_target_property(RAPIDJSON_INCLUDE_DIRS rapidjson INTERFACE_INCLUDE_DIRECTORIES)
+    else()
+        set(RAPIDJSON_INCLUDE_DIRS ${rapidjson_SOURCE_DIR}/include)
+    endif()
+    # Create imported target for consistency
+    add_library(rapidjson::rapidjson INTERFACE IMPORTED)
+    set_target_properties(rapidjson::rapidjson PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${RAPIDJSON_INCLUDE_DIRS}"
+    )
+endif()
+
 # Try to find librdkafka and rdkafka++ separately
 if(PkgConfig_FOUND)
     pkg_check_modules(Librdkafka QUIET rdkafka)
@@ -110,7 +134,26 @@ target_link_libraries(trading_engine
         Threads::Threads
         RdKafka::rdkafka++
         RdKafka::rdkafka
+        csp_core
+        csp_types  
+        csp_engine
 )
+
+# Add CSP include directories
+target_include_directories(trading_engine 
+    PUBLIC 
+        ${CMAKE_SOURCE_DIR}/deps/csp/cpp
+)
+
+# Configure CSP build options
+set(CSP_BUILD_TESTS OFF CACHE BOOL "Build CSP tests")
+set(CSP_BUILD_KAFKA_ADAPTER OFF CACHE BOOL "Build CSP Kafka adapter")
+set(CSP_BUILD_ARROW_ADAPTER OFF CACHE BOOL "Build CSP Arrow adapter")
+set(CSP_BUILD_PARQUET_ADAPTER OFF CACHE BOOL "Build CSP Parquet adapter")
+set(CSP_BUILD_WS_CLIENT_ADAPTER OFF CACHE BOOL "Build CSP WebSocket adapter")
+
+# Add CSP subdirectory
+add_subdirectory(deps/csp)
 
 # Add subdirectories
 add_subdirectory(apps)
