@@ -1,0 +1,41 @@
+{
+  "name": "main",
+  "version-string": "latest",
+  "dependencies": [
+    { "name": "arrow", "version>=": "19.0.1" },
+    "boost-beast",
+    "boost-multi-index",
+    "brotli",
+    {
+      "name": "cyrus-sasl",
+      "platform": "!windows"
+    },
+    "exprtk",
+    "gtest",
+    {
+      "name": "krb5",
+      "platform": "!windows"
+    },
+    {
+      "name": "librdkafka",
+      "features": [
+        {
+          "name": "sasl",
+          "platform": "!windows"
+        },
+        "ssl"
+      ]
+    },
+    {
+      "name": "lmdb",
+      "platform": "!windows"
+    },
+    "lz4",
+    "openssl",
+    "parquet",
+    "rapidjson",
+    "thrift",
+    "utf8proc"
+  ],
+  "builtin-baseline": "0bf1354d6704ec797acea686d0250afc4036a082"
+}
