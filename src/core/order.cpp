@@ -5,6 +5,7 @@ namespace trading::core {
 
 Order::Order()
     : id_(""),
+      userId_(""),
       symbol_(""),
       type_(OrderType::LIMIT),
       side_(OrderSide::BUY),
@@ -14,9 +15,10 @@ Order::Order()
       status_(OrderStatus::PENDING) {
 }
 
-Order::Order(const std::string& id, const std::string& symbol, OrderType type, OrderSide side,
-             double quantity, double price)
+Order::Order(const std::string& id, const std::string& userId, const std::string& symbol,
+             OrderType type, OrderSide side, double quantity, double price)
     : id_(id),
+      userId_(userId),
       symbol_(symbol),
       type_(type),
       side_(side),
@@ -30,32 +32,12 @@ const std::string& Order::getId() const noexcept {
     return id_;
 }
 
+const std::string& Order::getUserId() const noexcept {
+    return userId_;
+}
+
 const std::string& Order::getSymbol() const noexcept {
     return symbol_;
-}
-
-constexpr OrderType Order::getType() const noexcept {
-    return type_;
-}
-
-constexpr OrderSide Order::getSide() const noexcept {
-    return side_;
-}
-
-constexpr double Order::getQuantity() const noexcept {
-    return quantity_;
-}
-
-constexpr double Order::getPrice() const noexcept {
-    return price_;
-}
-
-constexpr double Order::getFilledQuantity() const noexcept {
-    return filled_quantity_;
-}
-
-constexpr OrderStatus Order::getStatus() const noexcept {
-    return status_;
 }
 
 void Order::setStatus(OrderStatus status) noexcept {

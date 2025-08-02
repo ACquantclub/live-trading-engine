@@ -8,12 +8,34 @@
 #include "trading/network/http_server.hpp"
 #include "trading/utils/config.hpp"
 #include "trading/validation/order_validator.hpp"
+#include "../json.hpp"
+using json = nlohmann::json;
 
 #include <chrono>
 #include <iostream>
 #include <memory>
 #include <thread>
 #include <signal.h>
+
+namespace {
+trading::core::OrderType stringToOrderType(const std::string& type_str) {
+    if (type_str == "LIMIT")
+        return trading::core::OrderType::LIMIT;
+    if (type_str == "MARKET")
+        return trading::core::OrderType::MARKET;
+    if (type_str == "STOP")
+        return trading::core::OrderType::STOP;
+    throw std::invalid_argument("Invalid order type string: " + type_str);
+}
+
+trading::core::OrderSide stringToOrderSide(const std::string& side_str) {
+    if (side_str == "BUY")
+        return trading::core::OrderSide::BUY;
+    if (side_str == "SELL")
+        return trading::core::OrderSide::SELL;
+    throw std::invalid_argument("Invalid order side string: " + side_str);
+}
+}  // namespace
 
 using namespace trading;
 
@@ -120,17 +142,61 @@ class TradingEngine {
     }
 
     network::HttpResponse handleOrderRequest(const network::HttpRequest& request) {
-        (void)request;  // Suppress unused parameter warning
-        // TODO: Parse order from request body and process
-        network::HttpResponse response;
-        response.status_code = 200;
-        response.body = "{\"status\": \"order received\"}";
-        response.headers["Content-Type"] = "application/json";
-        return response;
+        try {
+            // Parse json string
+            auto json_body = json::parse(request.body);
+
+            // Extract order data safely
+            std::string id = json_body.at("id");
+            std::string userId = json_body.at("userId");
+            std::string symbol = json_body.at("symbol");
+            std::string type_str = json_body.at("type");
+            std::string side_str = json_body.at("side");
+            double quantity = json_body.at("quantity");
+
+            core::OrderType type = stringToOrderType(type_str);
+            core::OrderSide side = stringToOrderSide(side_str);
+
+            double price = 0.0;
+            if (type == core::OrderType::LIMIT || type == core::OrderType::STOP) {
+                price = json_body.at("price");
+            }
+
+            // Create order object
+            core::Order order(id, userId, symbol, type, side, quantity, price);
+
+            // Validate order
+
+            // Process order
+
+            // Create and send confirmation
+            network::HttpResponse response;
+            response.status_code = 200;
+            response.body = "{\"status\": \"order received\", \"order_id\": \"" + id + "\"}";
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const json::exception& e) {
+            // Catches all JSON-related errors (parse, .at(), type conversion)
+            network::HttpResponse response;
+            response.status_code = 400;
+            response.body = "{\"error\": \"Invalid JSON format or missing/invalid field: " +
+                            std::string(e.what()) + "\"}";
+            response.headers["Content-Type"] = "application/json";
+            return response;
+        } catch (const std::invalid_argument& e) {
+            // Catches errors from our string-to-enum helpers
+            network::HttpResponse response;
+            response.status_code = 400;
+            response.body =
+                "{\"error\": \"Invalid value for type or side: " + std::string(e.what()) + "\"}";
+            response.headers["Content-Type"] = "application/json";
+            return response;
+        }
     }
 
     network::HttpResponse handleHealthRequest(const network::HttpRequest& request) {
-        (void)request;  // Suppress unused parameter warning
+        (void)request;
         network::HttpResponse response;
         response.status_code = 200;
         response.body = std::string("{\"status\": \"healthy\", \"running\": ") +
