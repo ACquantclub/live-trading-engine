@@ -111,6 +111,9 @@ SOURCE_FILES=$(find include src apps -name "*.cpp" -o -name "*.hpp" | \
                grep -v third_party/ | \
                sort)
 
+# Skip apps/json.hpp
+SOURCE_FILES=$(echo "$SOURCE_FILES" | grep -v "apps/json.hpp")
+
 if [ -z "$SOURCE_FILES" ]; then
     echo -e "${YELLOW}No source files found to analyze${NC}"
     exit 0

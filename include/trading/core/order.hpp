@@ -14,19 +14,32 @@ enum class OrderStatus : std::uint8_t { PENDING, PARTIALLY_FILLED, FILLED, REJEC
 class Order {
   public:
     Order();
-    Order(const std::string& id, const std::string& symbol, OrderType type, OrderSide side,
-          double quantity, double price = 0.0);
+    Order(const std::string& id, const std::string& userId, const std::string& symbol,
+          OrderType type, OrderSide side, double quantity, double price = 0.0);
     ~Order() = default;
 
     // Getters
     [[nodiscard]] const std::string& getId() const noexcept;
+    [[nodiscard]] const std::string& getUserId() const noexcept;
     [[nodiscard]] const std::string& getSymbol() const noexcept;
-    [[nodiscard]] constexpr OrderType getType() const noexcept;
-    [[nodiscard]] constexpr OrderSide getSide() const noexcept;
-    [[nodiscard]] constexpr double getQuantity() const noexcept;
-    [[nodiscard]] constexpr double getPrice() const noexcept;
-    [[nodiscard]] constexpr double getFilledQuantity() const noexcept;
-    [[nodiscard]] constexpr OrderStatus getStatus() const noexcept;
+    [[nodiscard]] constexpr OrderType getType() const noexcept {
+        return type_;
+    }
+    [[nodiscard]] constexpr OrderSide getSide() const noexcept {
+        return side_;
+    }
+    [[nodiscard]] constexpr double getQuantity() const noexcept {
+        return quantity_;
+    }
+    [[nodiscard]] constexpr double getPrice() const noexcept {
+        return price_;
+    }
+    [[nodiscard]] constexpr double getFilledQuantity() const noexcept {
+        return filled_quantity_;
+    }
+    [[nodiscard]] constexpr OrderStatus getStatus() const noexcept {
+        return status_;
+    }
 
     // Setters
     void setStatus(OrderStatus status) noexcept;
@@ -37,6 +50,7 @@ class Order {
 
   private:
     std::string id_;
+    std::string userId_;
     std::string symbol_;
     OrderType type_;
     OrderSide side_;

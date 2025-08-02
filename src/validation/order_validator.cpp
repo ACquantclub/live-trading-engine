@@ -19,7 +19,32 @@ ValidationResult OrderValidator::validate(std::shared_ptr<core::Order> order) co
     result.error = ValidationError::NONE;
     result.error_message = "";
 
-    // TODO: Implement comprehensive order validation
+    // Check if market is open
+    if (!isMarketOpen()) {
+        result.is_valid = false;
+        result.error = ValidationError::MARKET_CLOSED;
+        result.error_message = "Market is closed";
+        return result;
+    }
+
+    // Check if the symbol is valid
+    result = validateSymbol(order->getSymbol());
+    if (!result.is_valid) {
+        return result;
+    }
+
+    // Check if the quantity is valid
+    result = validateQuantity(order->getQuantity());
+    if (!result.is_valid) {
+        return result;
+    }
+
+    // Check if the price is valid
+    result = validatePrice(order->getPrice(), order->getType());
+    if (!result.is_valid) {
+        return result;
+    }
+
     return result;
 }
 

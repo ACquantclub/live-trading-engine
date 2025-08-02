@@ -83,6 +83,9 @@ CPP_FILES=$(find . -name "*.cpp" -o -name "*.hpp" -o -name "*.h" -o -name "*.cc"
            grep -v third_party/ | \
            sort)
 
+# Exclude apps/json.hpp
+CPP_FILES=$(echo "$CPP_FILES" | grep -v "apps/json.hpp")
+
 if [ -z "$CPP_FILES" ]; then
     echo -e "${YELLOW}No C++ files found to format${NC}"
     exit 0
