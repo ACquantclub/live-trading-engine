@@ -1,7 +1,9 @@
 #pragma once
 
 #include <functional>
+#include <map>
 #include <memory>
+#include <string>
 #include <vector>
 #include "order.hpp"
 #include "orderbook.hpp"
@@ -26,6 +28,10 @@ class MatchingEngine {
     MatchingEngine();
     ~MatchingEngine() = default;
 
+    // Add order book management
+    void addOrderBook(const std::string& symbol, std::shared_ptr<OrderBook> orderbook);
+    std::shared_ptr<OrderBook> getOrderBook(const std::string& symbol);
+
     // Matching logic
     std::vector<Trade> matchOrder(std::shared_ptr<Order> order, OrderBook& orderbook);
 
@@ -41,6 +47,7 @@ class MatchingEngine {
     uint64_t total_trades_;
     double total_volume_;
     uint64_t next_trade_id_;
+    std::map<std::string, std::shared_ptr<OrderBook>> orderbooks_;
 
     std::vector<Trade> matchMarketOrder(std::shared_ptr<Order> order, OrderBook& orderbook);
     std::vector<Trade> matchLimitOrder(std::shared_ptr<Order> order, OrderBook& orderbook);

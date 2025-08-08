@@ -166,8 +166,33 @@ class TradingEngine {
             core::Order order(id, userId, symbol, type, side, quantity, price);
 
             // Validate order
+            auto validation_result = validator_->validate(std::make_shared<core::Order>(order));
+            if (!validation_result.is_valid) {
+                network::HttpResponse response;
+                response.status_code = 400;
+                response.body =
+                    "{\"error\": \"Invalid order: " + validation_result.error_message + "\"}";
+                response.headers["Content-Type"] = "application/json";
+                return response;
+            }
 
-            // Process order
+            // Add order to matching engine
+            auto orderbook = matching_engine_->getOrderBook(symbol);
+
+            if (!orderbook) {
+                orderbook = std::make_shared<core::OrderBook>(symbol);
+                matching_engine_->addOrderBook(symbol, orderbook);
+            }
+
+            if (!orderbook->addOrder(std::make_shared<core::Order>(order))) {
+                network::HttpResponse response;
+                response.status_code = 400;
+                response.body = "{\"error\": \"Failed to add order to order book\"}";
+                response.headers["Content-Type"] = "application/json";
+                return response;
+            }
+
+            // Match the orders
 
             // Create and send confirmation
             network::HttpResponse response;

@@ -44,6 +44,9 @@ class Order {
     // Setters
     void setStatus(OrderStatus status) noexcept;
     void addFill(double quantity) noexcept;
+    void setQuantity(double quantity) noexcept {
+        quantity_ = quantity;
+    }
 
     // C++23 formatting support
     [[nodiscard]] std::string toString() const;

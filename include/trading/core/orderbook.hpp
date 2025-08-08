@@ -29,11 +29,14 @@ class OrderBook {
 
     const std::string& getSymbol() const;
 
+    // Provide access to order maps for the matching engine
+    std::map<double, std::vector<std::shared_ptr<Order>>, std::greater<double>>& getBuyOrdersMap();
+    std::map<double, std::vector<std::shared_ptr<Order>>>& getSellOrdersMap();
+
   private:
     std::string symbol_;
-    std::map<double, std::vector<std::shared_ptr<Order>>> buy_orders_;
+    std::map<double, std::vector<std::shared_ptr<Order>>, std::greater<double>> buy_orders_;
     std::map<double, std::vector<std::shared_ptr<Order>>> sell_orders_;
-    std::map<std::string, std::shared_ptr<Order>> order_lookup_;
 };
 
 }  // namespace core
