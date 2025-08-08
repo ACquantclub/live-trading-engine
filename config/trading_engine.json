@@ -39,6 +39,9 @@
         "console_output": true,
         "rotate_logs": true
     },
+    "portfolio": {
+        "starting_cash": 100000.0
+    },
     "matching_engine": {
         "enable_callbacks": true,
         "price_precision": 2,
