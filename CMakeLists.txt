@@ -182,4 +182,4 @@ endif()
 add_custom_target(quality
     DEPENDS format-check lint
     COMMENT "Running all code quality checks"
-) 
+)
