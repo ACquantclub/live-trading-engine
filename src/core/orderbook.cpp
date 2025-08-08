@@ -8,9 +8,27 @@ OrderBook::OrderBook(const std::string& symbol) : symbol_(symbol) {
 }
 
 bool OrderBook::addOrder(std::shared_ptr<Order> order) {
-    (void)order;  // Suppress unused parameter warning
-    // TODO: Implement order addition logic
-    return false;
+    if (!order) {
+        return false;
+    }
+
+    // Check if the order symbol matches the order book symbol
+    if (order->getSymbol() != symbol_) {
+        return false;
+    }
+
+    // Store order based on side
+    if (order->getSide() == OrderSide::BUY) {
+        buy_orders_[order->getPrice()].push_back(order);
+    } else if (order->getSide() == OrderSide::SELL) {
+        sell_orders_[order->getPrice()].push_back(order);
+    } else {
+        return false;
+    }
+
+    // Set order status
+    order->setStatus(OrderStatus::PENDING);
+    return true;
 }
 
 bool OrderBook::removeOrder(const std::string& order_id) {
@@ -20,28 +38,41 @@ bool OrderBook::removeOrder(const std::string& order_id) {
 }
 
 double OrderBook::getBestBid() const {
-    // TODO: Implement best bid calculation
-    return 0.0;
+    if (buy_orders_.empty()) {
+        return 0.0;  // No buy orders available
+    }
+
+    // Get the highest price from the buy orders
+    return buy_orders_.begin()->first;
 }
 
 double OrderBook::getBestAsk() const {
-    // TODO: Implement best ask calculation
-    return 0.0;
+    if (sell_orders_.empty()) {
+        return 0.0;  // No sell orders available
+    }
+
+    // Get the lowest price from the sell orders
+    return sell_orders_.begin()->first;
 }
 
 double OrderBook::getSpread() const {
-    // TODO: Implement spread calculation
-    return 0.0;
+    return getBestAsk() - getBestBid();
 }
 
 std::vector<std::shared_ptr<Order>> OrderBook::getBuyOrders() const {
-    // TODO: Implement buy orders retrieval
-    return std::vector<std::shared_ptr<Order>>();
+    std::vector<std::shared_ptr<Order>> orders;
+    for (const auto& [price, order_list] : buy_orders_) {
+        orders.insert(orders.end(), order_list.begin(), order_list.end());
+    }
+    return orders;
 }
 
 std::vector<std::shared_ptr<Order>> OrderBook::getSellOrders() const {
-    // TODO: Implement sell orders retrieval
-    return std::vector<std::shared_ptr<Order>>();
+    std::vector<std::shared_ptr<Order>> orders;
+    for (const auto& [price, order_list] : sell_orders_) {
+        orders.insert(orders.end(), order_list.begin(), order_list.end());
+    }
+    return orders;
 }
 
 std::shared_ptr<Order> OrderBook::findOrder(const std::string& order_id) const {
@@ -52,6 +83,15 @@ std::shared_ptr<Order> OrderBook::findOrder(const std::string& order_id) const {
 
 const std::string& OrderBook::getSymbol() const {
     return symbol_;
+}
+
+std::map<double, std::vector<std::shared_ptr<Order>>, std::greater<double>>&
+OrderBook::getBuyOrdersMap() {
+    return buy_orders_;
+}
+
+std::map<double, std::vector<std::shared_ptr<Order>>>& OrderBook::getSellOrdersMap() {
+    return sell_orders_;
 }
 
 }  // namespace core
