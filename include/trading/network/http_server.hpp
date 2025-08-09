@@ -1,9 +1,11 @@
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
 #include <string>
+#include <thread>
 
 namespace trading {
 namespace network {
@@ -43,7 +45,7 @@ class HttpServer {
 
   private:
     std::string host_;
-    [[maybe_unused]] int port_;  // TODO: Use when implementing HTTP server
+    int port_;
     bool running_;
     int timeout_seconds_;
     int max_connections_;
@@ -53,6 +55,11 @@ class HttpServer {
 
     void handleRequest(const HttpRequest& request);
     HttpResponse createErrorResponse(int status_code, const std::string& message);
+
+    // Internal server state
+    int server_fd_ = -1;
+    std::thread server_thread_;
+    std::atomic<bool> stop_flag_{false};
 };
 
 }  // namespace network

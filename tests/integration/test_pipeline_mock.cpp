@@ -649,6 +649,8 @@ TEST_F(PipelineMockTest, PipelinePerformanceTest) {
     std::cout << "  Total Time: " << total_duration.count() << "ms" << std::endl;
     std::cout << "  Orders/sec: " << (NUM_ORDERS * 1000.0 / total_duration.count()) << std::endl;
     std::cout << "  Trades Generated: " << trade_count_ << std::endl;
+    std::cout << "  Trades/sec: " << (trade_count_ * 1000.0 / processing_duration.count())
+              << std::endl;
     std::cout << "  Total Volume: $" << total_volume_ << std::endl;
 
     EXPECT_EQ(processed_orders_, NUM_ORDERS);
