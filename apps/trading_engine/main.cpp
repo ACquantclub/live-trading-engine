@@ -96,6 +96,16 @@ class TradingEngine {
             return false;
         }
 
+        // Setup queue message handler for processing orders from Redpanda
+        // This must be done after connect() is called
+        if (!queue_client_->subscribe("order-requests", [this](const messaging::Message& msg) {
+                processOrderFromQueue(msg);
+            })) {
+            trade_logger_->logMessage(logging::LogLevel::ERROR,
+                                      "Failed to subscribe to order-requests topic");
+            return false;
+        }
+
         running_ = true;
         trade_logger_->logMessage(logging::LogLevel::INFO, "Trading engine started");
         return true;
@@ -143,8 +153,54 @@ class TradingEngine {
 
     network::HttpResponse handleOrderRequest(const network::HttpRequest& request) {
         try {
-            // Parse json string
+            // Light validation on the incoming request
             auto json_body = json::parse(request.body);
+            if (!json_body.contains("userId") || !json_body.contains("id")) {
+                throw std::invalid_argument("Request must contain 'userId' and 'id'");
+            }
+
+            std::string user_id = json_body.at("userId");
+
+            // Publish the full request body to Redpanda, using userId as the key
+            // This ensures orders from the same user go to the same partition
+            bool published = queue_client_->publish("order-requests", user_id, request.body);
+
+            if (!published) {
+                app_logger_->log(logging::LogLevel::ERROR, "Failed to publish order to queue");
+                network::HttpResponse response;
+                response.status_code = 500;  // Internal Server Error
+                response.body = "{\"error\": \"Failed to queue order for processing\"}";
+                response.headers["Content-Type"] = "application/json";
+                return response;
+            }
+
+            // Immediately acknowledge the request
+            network::HttpResponse response;
+            response.status_code = 202;  // Accepted
+            response.body = "{\"status\": \"order accepted for processing\", \"order_id\": \"" +
+                            json_body.at("id").get<std::string>() + "\"}";
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const json::exception& e) {
+            network::HttpResponse response;
+            response.status_code = 400;
+            response.body = "{\"error\": \"Invalid JSON format: " + std::string(e.what()) + "\"}";
+            response.headers["Content-Type"] = "application/json";
+            return response;
+        } catch (const std::invalid_argument& e) {
+            network::HttpResponse response;
+            response.status_code = 400;
+            response.body = "{\"error\": \"" + std::string(e.what()) + "\"}";
+            response.headers["Content-Type"] = "application/json";
+            return response;
+        }
+    }
+
+    void processOrderFromQueue(const messaging::Message& msg) {
+        try {
+            app_logger_->log(logging::LogLevel::INFO, "Processing order from queue: " + msg.value);
+            auto json_body = json::parse(msg.value);
 
             // Extract order data safely
             std::string id = json_body.at("id");
@@ -168,12 +224,10 @@ class TradingEngine {
             // Validate order
             auto validation_result = validator_->validate(std::make_shared<core::Order>(order));
             if (!validation_result.is_valid) {
-                network::HttpResponse response;
-                response.status_code = 400;
-                response.body =
-                    "{\"error\": \"Invalid order: " + validation_result.error_message + "\"}";
-                response.headers["Content-Type"] = "application/json";
-                return response;
+                app_logger_->log(logging::LogLevel::ERROR, "Invalid order from queue rejected: " +
+                                                               validation_result.error_message);
+                // Optionally, publish to a "dead-letter" or "rejected-orders" topic
+                return;
             }
 
             // Add order to matching engine
@@ -186,11 +240,9 @@ class TradingEngine {
 
             auto order_ptr = std::make_shared<core::Order>(order);
             if (!orderbook->addOrder(order_ptr)) {
-                network::HttpResponse response;
-                response.status_code = 400;
-                response.body = "{\"error\": \"Failed to add order to order book\"}";
-                response.headers["Content-Type"] = "application/json";
-                return response;
+                app_logger_->log(logging::LogLevel::ERROR,
+                                 "Failed to add order " + id + " to order book");
+                return;
             }
 
             // Match the order against existing orders in the book
@@ -202,30 +254,12 @@ class TradingEngine {
                     logging::LogLevel::INFO,
                     "Order " + id + " generated " + std::to_string(trades.size()) + " trades");
             }
-
-            // Create and send confirmation
-            network::HttpResponse response;
-            response.status_code = 200;
-            response.body = "{\"status\": \"order received\", \"order_id\": \"" + id + "\"}";
-            response.headers["Content-Type"] = "application/json";
-            return response;
-
         } catch (const json::exception& e) {
-            // Catches all JSON-related errors (parse, .at(), type conversion)
-            network::HttpResponse response;
-            response.status_code = 400;
-            response.body = "{\"error\": \"Invalid JSON format or missing/invalid field: " +
-                            std::string(e.what()) + "\"}";
-            response.headers["Content-Type"] = "application/json";
-            return response;
+            app_logger_->log(logging::LogLevel::ERROR,
+                             "Failed to parse order from queue: " + std::string(e.what()));
         } catch (const std::invalid_argument& e) {
-            // Catches errors from our string-to-enum helpers
-            network::HttpResponse response;
-            response.status_code = 400;
-            response.body =
-                "{\"error\": \"Invalid value for type or side: " + std::string(e.what()) + "\"}";
-            response.headers["Content-Type"] = "application/json";
-            return response;
+            app_logger_->log(logging::LogLevel::ERROR,
+                             "Invalid data in order from queue: " + std::string(e.what()));
         }
     }
 
