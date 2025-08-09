@@ -184,7 +184,8 @@ class TradingEngine {
                 matching_engine_->addOrderBook(symbol, orderbook);
             }
 
-            if (!orderbook->addOrder(std::make_shared<core::Order>(order))) {
+            auto order_ptr = std::make_shared<core::Order>(order);
+            if (!orderbook->addOrder(order_ptr)) {
                 network::HttpResponse response;
                 response.status_code = 400;
                 response.body = "{\"error\": \"Failed to add order to order book\"}";
@@ -192,7 +193,15 @@ class TradingEngine {
                 return response;
             }
 
-            // Match the orders
+            // Match the order against existing orders in the book
+            auto trades = matching_engine_->matchOrder(order_ptr, *orderbook);
+
+            // Log info about generated trades
+            if (!trades.empty()) {
+                app_logger_->log(
+                    logging::LogLevel::INFO,
+                    "Order " + id + " generated " + std::to_string(trades.size()) + " trades");
+            }
 
             // Create and send confirmation
             network::HttpResponse response;

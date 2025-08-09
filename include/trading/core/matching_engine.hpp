@@ -7,6 +7,7 @@
 #include <vector>
 #include "order.hpp"
 #include "orderbook.hpp"
+#include "user.hpp"
 
 namespace trading {
 namespace core {
@@ -15,6 +16,8 @@ struct Trade {
     std::string trade_id;
     std::string buy_order_id;
     std::string sell_order_id;
+    std::string buy_user_id;   // User ID of the buyer
+    std::string sell_user_id;  // User ID of the seller
     std::string symbol;
     double quantity;
     double price;
@@ -35,6 +38,12 @@ class MatchingEngine {
     // Matching logic
     std::vector<Trade> matchOrder(std::shared_ptr<Order> order, OrderBook& orderbook);
 
+    // User management
+    void addUser(std::shared_ptr<User> user);
+    std::shared_ptr<User> getUser(const std::string& user_id);
+    std::shared_ptr<User> getOrCreateUser(const std::string& user_id,
+                                          double starting_cash = 10000.0);
+
     // Event handling
     void setTradeCallback(TradeCallback callback);
 
@@ -48,11 +57,15 @@ class MatchingEngine {
     double total_volume_;
     uint64_t next_trade_id_;
     std::map<std::string, std::shared_ptr<OrderBook>> orderbooks_;
+    std::map<std::string, std::shared_ptr<User>> users_;  // User registry
 
     std::vector<Trade> matchMarketOrder(std::shared_ptr<Order> order, OrderBook& orderbook);
     std::vector<Trade> matchLimitOrder(std::shared_ptr<Order> order, OrderBook& orderbook);
     Trade createTrade(std::shared_ptr<Order> buy_order, std::shared_ptr<Order> sell_order,
                       double quantity, double price);
+
+    // Portfolio update helper
+    bool updateUserPortfolios(const Trade& trade, double fee = 0.0);
 };
 
 }  // namespace core
