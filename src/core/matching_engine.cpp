@@ -50,7 +50,15 @@ std::vector<Trade> MatchingEngine::matchMarketOrder(std::shared_ptr<Order> order
     std::vector<Trade> trades;
     double remaining_quantity = order->getQuantity();
 
+    // Use a temporary list to avoid issues with a modifying a collection while iterating
+    std::vector<std::shared_ptr<Order>> active_opposite_orders;
     for (const auto& opposite_order : trades_opposite_side) {
+        if (opposite_order->getQuantity() > 0) {
+            active_opposite_orders.push_back(opposite_order);
+        }
+    }
+
+    for (const auto& opposite_order : active_opposite_orders) {
         if (remaining_quantity <= 0) {
             break;  // Order is fully matched
         }
@@ -108,7 +116,15 @@ std::vector<Trade> MatchingEngine::matchLimitOrder(std::shared_ptr<Order> order,
     std::vector<Trade> trades;
     double remaining_quantity = order->getQuantity();
 
+    // Use a temporary list to avoid issues with a modifying a collection while iterating
+    std::vector<std::shared_ptr<Order>> active_opposite_orders;
     for (const auto& opposite_order : trades_opposite_side) {
+        if (opposite_order->getQuantity() > 0) {
+            active_opposite_orders.push_back(opposite_order);
+        }
+    }
+
+    for (const auto& opposite_order : active_opposite_orders) {
         if (remaining_quantity <= 0) {
             break;  // Order is fully matched
         }
