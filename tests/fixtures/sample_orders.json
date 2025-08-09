@@ -1,56 +1,150 @@
 {
+    "users": [
+        {
+            "id": "trader-001",
+            "starting_cash": 50000.0,
+            "initial_positions": [
+                {
+                    "symbol": "AAPL",
+                    "quantity": 100.0,
+                    "average_price": 145.00
+                }
+            ]
+        },
+        {
+            "id": "trader-002", 
+            "starting_cash": 25000.0,
+            "initial_positions": []
+        },
+        {
+            "id": "trader-003",
+            "starting_cash": 100000.0,
+            "initial_positions": [
+                {
+                    "symbol": "MSFT",
+                    "quantity": 200.0,
+                    "average_price": 280.00
+                },
+                {
+                    "symbol": "GOOGL",
+                    "quantity": 50.0,
+                    "average_price": 2400.00
+                }
+            ]
+        }
+    ],
     "orders": [
         {
             "id": "ORDER_001",
-            "symbol": "AAPL",
-            "type": "LIMIT",
-            "side": "BUY",
-            "quantity": 100.0,
-            "price": 150.50
-        },
-        {
-            "id": "ORDER_002",
+            "userId": "trader-001",
             "symbol": "AAPL",
             "type": "LIMIT",
             "side": "SELL",
             "quantity": 50.0,
-            "price": 151.00
+            "price": 150.50,
+            "description": "Sell half AAPL position at premium"
+        },
+        {
+            "id": "ORDER_002",
+            "userId": "trader-002",
+            "symbol": "AAPL",
+            "type": "LIMIT",
+            "side": "BUY",
+            "quantity": 25.0,
+            "price": 150.50,
+            "description": "Buy AAPL at market price"
         },
         {
             "id": "ORDER_003",
+            "userId": "trader-002",
             "symbol": "MSFT",
             "type": "MARKET",
             "side": "BUY",
-            "quantity": 200.0,
-            "price": 0.0
+            "quantity": 50.0,
+            "price": 0.0,
+            "description": "Market buy MSFT"
         },
         {
             "id": "ORDER_004",
-            "symbol": "GOOGL",
-            "type": "STOP",
+            "userId": "trader-003",
+            "symbol": "MSFT",
+            "type": "LIMIT",
             "side": "SELL",
-            "quantity": 75.0,
-            "price": 2500.00
+            "quantity": 50.0,
+            "price": 285.00,
+            "description": "Sell MSFT at premium"
+        },
+        {
+            "id": "ORDER_005",
+            "userId": "trader-001",
+            "symbol": "GOOGL",
+            "type": "LIMIT",
+            "side": "BUY",
+            "quantity": 10.0,
+            "price": 2450.00,
+            "description": "Buy GOOGL below market"
+        },
+        {
+            "id": "ORDER_006",
+            "userId": "trader-003",
+            "symbol": "GOOGL",
+            "type": "LIMIT",
+            "side": "SELL",
+            "quantity": 10.0,
+            "price": 2450.00,
+            "description": "Sell GOOGL at fair value"
+        }
+    ],
+    "matching_scenarios": [
+        {
+            "name": "AAPL Partial Match",
+            "orders": ["ORDER_001", "ORDER_002"],
+            "expected_trades": 1,
+            "expected_volume": 3762.50
+        },
+        {
+            "name": "MSFT Market Order vs Limit",
+            "orders": ["ORDER_004", "ORDER_003"],
+            "expected_trades": 1,
+            "expected_volume": 14250.00
+        },
+        {
+            "name": "GOOGL Perfect Match",
+            "orders": ["ORDER_005", "ORDER_006"],
+            "expected_trades": 1,
+            "expected_volume": 24500.00
         }
     ],
     "invalid_orders": [
         {
             "id": "INVALID_001",
+            "userId": "trader-001",
             "symbol": "",
+            "type": "LIMIT",
+            "side": "BUY",
+            "quantity": 10.0,
+            "price": 100.0,
+            "expected_error": "Invalid symbol"
+        },
+        {
+            "id": "INVALID_002",
+            "userId": "trader-002",
+            "symbol": "AAPL",
             "type": "LIMIT",
             "side": "BUY",
             "quantity": -10.0,
             "price": 100.0,
-            "expected_error": "INVALID_SYMBOL"
+            "expected_error": "Invalid quantity"
         },
         {
-            "id": "INVALID_002",
+            "id": "INVALID_003",
+            "userId": "trader-poor",
             "symbol": "AAPL",
             "type": "LIMIT",
             "side": "BUY",
-            "quantity": 0.0,
-            "price": 100.0,
-            "expected_error": "INVALID_QUANTITY"
+            "quantity": 1000.0,
+            "price": 200.0,
+            "expected_error": "Insufficient funds"
         }
     ]
 } 
