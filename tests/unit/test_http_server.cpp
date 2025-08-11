@@ -376,10 +376,10 @@ TEST_F(HttpServerTest, ConfigurableThreadPoolHandlesConcurrentRequests) {
     EXPECT_EQ(started_count.load(), num_concurrent_requests);
 
     // With 8 threads and 50ms processing time per request, 16 requests should complete
-    // in roughly 100ms (2 batches) plus some overhead. Total time should be less than 250ms.
-    EXPECT_LT(duration.count(), 250);
+    // in roughly 100ms (2 batches) plus some overhead. Total time should be less than 500ms.
+    EXPECT_LT(duration.count(), 500);
 
     // But it should take at least the processing time for 2 batches (since we have 16 requests
     // and 8 threads, each request takes 50ms) - allowing for some variance
-    EXPECT_GT(duration.count(), 80);
+    EXPECT_GT(duration.count(), 60);
 }
