@@ -7,6 +7,8 @@
 #include <string>
 #include <thread>
 
+#include "trading/utils/thread_pool.hpp"
+
 namespace trading {
 namespace network {
 
@@ -27,7 +29,7 @@ class HttpServer {
   public:
     using RequestHandler = std::function<HttpResponse(const HttpRequest&)>;
 
-    HttpServer(const std::string& host, int port);
+    HttpServer(const std::string& host, int port, int threads = 4);
     ~HttpServer();
 
     // Server lifecycle
@@ -50,10 +52,13 @@ class HttpServer {
     int timeout_seconds_;
     int max_connections_;
 
+    std::unique_ptr<utils::ThreadPool> thread_pool_;
+
     RequestHandler order_handler_;
     RequestHandler health_handler_;
 
     void handleRequest(const HttpRequest& request);
+    void handleClientRequest(int client_fd);
     HttpResponse createErrorResponse(int status_code, const std::string& message);
 
     // Internal server state

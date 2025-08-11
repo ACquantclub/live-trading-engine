@@ -64,7 +64,8 @@ class TradingEngine {
         // Initialize HTTP server
         std::string host = config_->getString("http.host", "0.0.0.0");
         int port = config_->getInt("http.port", 8080);
-        http_server_ = std::make_unique<network::HttpServer>(host, port);
+        int threads = config_->getInt("http.threads", 4);
+        http_server_ = std::make_unique<network::HttpServer>(host, port, threads);
 
         // Initialize queue client
         std::string brokers = config_->getString("redpanda.brokers", "localhost:9092");
