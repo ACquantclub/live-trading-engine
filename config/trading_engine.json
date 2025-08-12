@@ -9,7 +9,7 @@
         "port": 8080,
         "timeout_seconds": 30,
         "max_connections": 1000,
-        "threads": 50
+        "threads": 40
     },
     "redpanda": {
         "brokers": "localhost:9092",

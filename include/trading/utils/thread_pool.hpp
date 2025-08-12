@@ -11,6 +11,7 @@
 #include <vector>
 
 namespace trading::utils {
+
 class ThreadPool {
   public:
     // Constructor initializes the thread pool with a given number of threads

@@ -9,18 +9,11 @@ namespace trading {
 namespace logging {
 
 TradeLogger::TradeLogger(const std::string& log_file_path)
-    : log_file_path_(log_file_path),
+    : AsyncLogger(log_file_path),
       current_log_level_(LogLevel::INFO),
       max_file_size_(100 * 1024 * 1024),
       console_output_enabled_(true),
       next_confirmation_id_(1) {
-    log_file_.open(log_file_path_, std::ios::app);
-}
-
-TradeLogger::~TradeLogger() {
-    if (log_file_.is_open()) {
-        log_file_.close();
-    }
 }
 
 void TradeLogger::logTrade(const core::Trade& trade) {
@@ -28,7 +21,16 @@ void TradeLogger::logTrade(const core::Trade& trade) {
     oss << "TRADE: " << trade.trade_id << " Symbol: " << trade.symbol
         << " Quantity: " << trade.quantity << " Price: " << trade.price
         << " Buy Order: " << trade.buy_order_id << " Sell Order: " << trade.sell_order_id;
-    writeLog(LogLevel::INFO, oss.str());
+
+    std::string formatted_message = formatLogEntry(LogLevel::INFO, oss.str());
+
+    // Add to async queue for file logging
+    addLog(formatted_message);
+
+    // Handle console output immediately (synchronously)
+    if (console_output_enabled_) {
+        std::cout << formatted_message << std::endl;
+    }
 }
 
 void TradeLogger::logExecution(const execution::ExecutionResult& result) {
@@ -38,11 +40,32 @@ void TradeLogger::logExecution(const execution::ExecutionResult& result) {
     if (!result.error_message.empty()) {
         oss << " Error: " << result.error_message;
     }
-    writeLog(LogLevel::INFO, oss.str());
+
+    std::string formatted_message = formatLogEntry(LogLevel::INFO, oss.str());
+
+    // Add to async queue for file logging
+    addLog(formatted_message);
+
+    // Handle console output immediately (synchronously)
+    if (console_output_enabled_) {
+        std::cout << formatted_message << std::endl;
+    }
 }
 
 void TradeLogger::logMessage(LogLevel level, const std::string& message) {
-    writeLog(level, message);
+    if (level < current_log_level_) {
+        return;
+    }
+
+    std::string formatted_message = formatLogEntry(level, message);
+
+    // Add to async queue for file logging
+    addLog(formatted_message);
+
+    // Handle console output immediately (synchronously)
+    if (console_output_enabled_) {
+        std::cout << formatted_message << std::endl;
+    }
 }
 
 TradeConfirmation TradeLogger::createConfirmation(const core::Trade& trade) {
@@ -62,7 +85,17 @@ bool TradeLogger::sendConfirmation(const TradeConfirmation& confirmation) {
     std::ostringstream oss;
     oss << "CONFIRMATION: " << confirmation.confirmation_id << " Trade: " << confirmation.trade_id
         << " Status: " << confirmation.status;
-    writeLog(LogLevel::INFO, oss.str());
+
+    std::string formatted_message = formatLogEntry(LogLevel::INFO, oss.str());
+
+    // Add to async queue for file logging
+    addLog(formatted_message);
+
+    // Handle console output immediately (synchronously)
+    if (console_output_enabled_) {
+        std::cout << formatted_message << std::endl;
+    }
+
     return true;
 }
 
@@ -76,23 +109,6 @@ void TradeLogger::setRotateSize(size_t max_size_bytes) {
 
 void TradeLogger::enableConsoleOutput(bool enable) {
     console_output_enabled_ = enable;
-}
-
-void TradeLogger::writeLog(LogLevel level, const std::string& message) {
-    if (level < current_log_level_) {
-        return;
-    }
-
-    std::string formatted_message = formatLogEntry(level, message);
-
-    if (log_file_.is_open()) {
-        log_file_ << formatted_message << std::endl;
-        log_file_.flush();
-    }
-
-    if (console_output_enabled_) {
-        std::cout << formatted_message << std::endl;
-    }
 }
 
 std::string TradeLogger::formatLogEntry(LogLevel level, const std::string& message) {
