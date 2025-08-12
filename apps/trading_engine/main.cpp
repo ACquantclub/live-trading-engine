@@ -84,6 +84,16 @@ class TradingEngine {
             return false;
         }
 
+        // Start async logging threads
+        try {
+            app_logger_->start();
+            trade_logger_->start();
+        } catch (const std::runtime_error& e) {
+            app_logger_->log(logging::LogLevel::ERROR,
+                             "Failed to start logging threads: " + std::string(e.what()));
+            return false;
+        }
+
         // Start HTTP server
         if (!http_server_->start()) {
             trade_logger_->logMessage(logging::LogLevel::ERROR, "Failed to start HTTP server");
@@ -128,6 +138,10 @@ class TradingEngine {
         }
 
         trade_logger_->logMessage(logging::LogLevel::INFO, "Trading engine stopped");
+
+        // Stop async logging threads (this will flush all remaining messages)
+        trade_logger_->stop();
+        app_logger_->stop();
     }
 
     bool isRunning() const {
@@ -329,6 +343,14 @@ int main(int argc, char* argv[]) {
     // A kludge to get the logger to the signal handler
     g_logger = std::make_shared<logging::AppLogger>("app.log");
 
+    // Start the global logger's async thread
+    try {
+        g_logger->start();
+    } catch (const std::runtime_error& e) {
+        std::cerr << "Failed to start global logger: " << e.what() << std::endl;
+        return 1;
+    }
+
     // Setup signal handlers
     signal(SIGINT, signalHandler);
     signal(SIGTERM, signalHandler);
@@ -353,5 +375,9 @@ int main(int argc, char* argv[]) {
     }
 
     g_logger->log(logging::LogLevel::INFO, "Trading engine stopped.");
+
+    // Stop the global logger's async thread (flush remaining messages)
+    g_logger->stop();
+
     return 0;
 }

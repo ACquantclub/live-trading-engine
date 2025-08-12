@@ -1,10 +1,10 @@
 #pragma once
 
-#include <fstream>
 #include <memory>
 #include <string>
 #include "../core/matching_engine.hpp"
 #include "../execution/executor.hpp"
+#include "async_logger.hpp"
 #include "log_level.hpp"
 
 namespace trading {
@@ -20,10 +20,10 @@ struct TradeConfirmation {
     std::string status;
 };
 
-class TradeLogger {
+class TradeLogger : public AsyncLogger {
   public:
     TradeLogger(const std::string& log_file_path);
-    virtual ~TradeLogger();
+    virtual ~TradeLogger() = default;
 
     // Logging methods
     virtual void logTrade(const core::Trade& trade);
@@ -40,14 +40,11 @@ class TradeLogger {
     void enableConsoleOutput(bool enable);
 
   private:
-    std::string log_file_path_;
-    std::ofstream log_file_;
     LogLevel current_log_level_;
     size_t max_file_size_;
     bool console_output_enabled_;
     uint64_t next_confirmation_id_;
 
-    void writeLog(LogLevel level, const std::string& message);
     std::string formatLogEntry(LogLevel level, const std::string& message);
     std::string getCurrentTimestamp();
     void rotateLogFile();
