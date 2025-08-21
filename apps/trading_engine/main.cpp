@@ -8,7 +8,7 @@
 #include "trading/network/http_server.hpp"
 #include "trading/utils/config.hpp"
 #include "trading/validation/order_validator.hpp"
-#include "../json.hpp"
+#include "nlohmann/json.hpp"
 using json = nlohmann::json;
 
 #include <chrono>

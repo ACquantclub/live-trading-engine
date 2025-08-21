@@ -3,8 +3,7 @@
 #include <iomanip>
 #include <sstream>
 
-// Include nlohmann/json - assuming it's available in the project
-#include <nlohmann/json.hpp>
+#include "nlohmann/json.hpp"
 using json = nlohmann::json;
 
 namespace trading {
