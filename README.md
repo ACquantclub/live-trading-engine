@@ -31,7 +31,6 @@ graph TD
 - C++23 compatible compiler:
   - GCC 12+ (full C++23 support)
   - Clang 15+ (partial C++23 support, 17+ recommended)
-  - MSVC 19.35+ (Visual Studio 2022 17.5+)
 - clang-format 15+ (for C++23 formatting)
 - clang-tidy 15+ (for C++23 static analysis)
 

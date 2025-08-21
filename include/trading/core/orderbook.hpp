@@ -2,6 +2,7 @@
 
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 #include "order.hpp"
 
@@ -28,6 +29,9 @@ class OrderBook {
     std::shared_ptr<Order> findOrder(const std::string& order_id) const;
 
     const std::string& getSymbol() const;
+
+    // JSON serialization for API endpoints
+    std::string toJSON() const;
 
     // Provide access to order maps for the matching engine
     std::map<double, std::vector<std::shared_ptr<Order>>, std::greater<double>>& getBuyOrdersMap();

@@ -7,7 +7,9 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstring>
+#include <regex>
 #include <sstream>
 
 namespace trading {
@@ -18,6 +20,8 @@ std::string reasonPhrase(int status) {
     switch (status) {
         case 200:
             return "OK";
+        case 201:
+            return "Created";
         case 202:
             return "Accepted";
         case 400:
@@ -255,18 +259,7 @@ void HttpServer::handleClientRequest(int client_fd) {
     }
 
     // Route
-    HttpResponse resp;
-    bool handled = false;
-    if (req.path == "/health" && health_handler_) {
-        resp = health_handler_(req);
-        handled = true;
-    } else if (req.path == "/orders" && order_handler_) {
-        resp = order_handler_(req);
-        handled = true;
-    }
-    if (!handled) {
-        resp = createErrorResponse(404, "Not Found");
-    }
+    HttpResponse resp = routeRequest(req);
 
     // Ensure Content-Type header
     if (resp.headers.find("Content-Type") == resp.headers.end()) {
@@ -313,6 +306,94 @@ void HttpServer::setOrderHandler(RequestHandler handler) {
 
 void HttpServer::setHealthHandler(RequestHandler handler) {
     health_handler_ = handler;
+}
+
+void HttpServer::registerRoute(const std::string& method, const std::string& path_pattern,
+                               RequestHandler handler) {
+    Route route;
+    route.method = method;
+    route.path_pattern = path_pattern;
+    route.path_regex = pathPatternToRegex(path_pattern, route.param_names);
+    route.handler = handler;
+    routes_.push_back(route);
+}
+
+std::regex HttpServer::pathPatternToRegex(const std::string& pattern,
+                                          std::vector<std::string>& param_names) {
+    param_names.clear();
+    std::string regex_pattern = pattern;
+
+    // Replace {param} with named capture groups
+    std::regex param_regex(R"(\{([^}]+)\})");
+    std::smatch match;
+    std::string::const_iterator start = regex_pattern.cbegin();
+    std::string result;
+
+    while (std::regex_search(start, regex_pattern.cend(), match, param_regex)) {
+        result += std::string(start, match[0].first);
+        param_names.push_back(match[1].str());
+        result += "([^/]+)";  // Capture group for the parameter
+        start = match[0].second;
+    }
+    result += std::string(start, regex_pattern.cend());
+
+    // Escape other regex special characters and ensure exact match
+    return std::regex("^" + result + "$");
+}
+
+HttpResponse HttpServer::routeRequest(const HttpRequest& request) {
+    // Fast path for high-frequency endpoints - avoid regex overhead
+    if (request.method == "POST" && request.path == "/order" && !routes_.empty()) {
+        // Find the /order route directly
+        for (const auto& route : routes_) {
+            if (route.method == "POST" && route.path_pattern == "/order") {
+                return route.handler(request);
+            }
+        }
+    }
+
+    if (request.method == "GET" && request.path == "/health" && !routes_.empty()) {
+        // Find the /health route directly
+        for (const auto& route : routes_) {
+            if (route.method == "GET" && route.path_pattern == "/health") {
+                return route.handler(request);
+            }
+        }
+    }
+
+    // For parameterized routes, use regex matching
+    for (const auto& route : routes_) {
+        if (route.method == request.method || route.method == "*") {
+            // Skip simple routes we already handled above
+            if ((route.path_pattern == "/order" && route.method == "POST") ||
+                (route.path_pattern == "/health" && route.method == "GET")) {
+                continue;
+            }
+
+            std::smatch match;
+            if (std::regex_match(request.path, match, route.path_regex)) {
+                // Extract path parameters only for parameterized routes
+                if (!route.param_names.empty()) {
+                    HttpRequest modified_request = request;
+                    for (size_t i = 0; i < route.param_names.size() && i + 1 < match.size(); ++i) {
+                        modified_request.path_params[route.param_names[i]] = match[i + 1].str();
+                    }
+                    return route.handler(modified_request);
+                } else {
+                    return route.handler(request);
+                }
+            }
+        }
+    }
+
+    // Fall back to legacy handlers for backward compatibility
+    if (request.path == "/health" && health_handler_) {
+        return health_handler_(request);
+    } else if (request.path == "/orders" && order_handler_) {
+        return order_handler_(request);
+    }
+
+    return createErrorResponse(404, "Not Found");
 }
 
 void HttpServer::setTimeout(int seconds) {

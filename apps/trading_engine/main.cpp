@@ -108,7 +108,6 @@ class TradingEngine {
         }
 
         // Setup queue message handler for processing orders from Redpanda
-        // This must be done after connect() is called
         if (!queue_client_->subscribe("order-requests", [this](const messaging::Message& msg) {
                 processOrderFromQueue(msg);
             })) {
@@ -150,12 +149,23 @@ class TradingEngine {
 
   private:
     void setupCallbacks() {
-        // Setup HTTP request handlers
-        http_server_->setOrderHandler(
-            [this](const network::HttpRequest& request) { return handleOrderRequest(request); });
+        // Setup HTTP request handlers using new routing system
+        http_server_->registerRoute("POST", "/order", [this](const network::HttpRequest& request) {
+            return handleOrderRequest(request);
+        });
 
-        http_server_->setHealthHandler(
-            [this](const network::HttpRequest& request) { return handleHealthRequest(request); });
+        http_server_->registerRoute("GET", "/health", [this](const network::HttpRequest& request) {
+            return handleHealthRequest(request);
+        });
+
+        http_server_->registerRoute("GET", "/api/v1/orderbook/{symbol}",
+                                    [this](const network::HttpRequest& request) {
+                                        return handleOrderBookRequest(request);
+                                    });
+
+        http_server_->registerRoute(
+            "GET", "/api/v1/stats/{symbol}",
+            [this](const network::HttpRequest& request) { return handleStatsRequest(request); });
 
         // Setup trade callback
         matching_engine_->setTradeCallback(
@@ -177,7 +187,6 @@ class TradingEngine {
             std::string user_id = json_body.at("userId");
 
             // Publish the full request body to Redpanda, using userId as the key
-            // This ensures orders from the same user go to the same partition
             bool published = queue_client_->publish("order-requests", user_id, request.body);
 
             if (!published) {
@@ -214,7 +223,6 @@ class TradingEngine {
 
     void processOrderFromQueue(const messaging::Message& msg) {
         try {
-            app_logger_->log(logging::LogLevel::INFO, "Processing order from queue: " + msg.value);
             auto json_body = json::parse(msg.value);
 
             // Extract order data safely
@@ -224,6 +232,9 @@ class TradingEngine {
             std::string type_str = json_body.at("type");
             std::string side_str = json_body.at("side");
             double quantity = json_body.at("quantity");
+
+            // Log processing but without the full message body for performance
+            app_logger_->log(logging::LogLevel::INFO, "Processing order from queue: " + id);
 
             core::OrderType type = stringToOrderType(type_str);
             core::OrderSide side = stringToOrderSide(side_str);
@@ -286,6 +297,83 @@ class TradingEngine {
                         (running_ ? "true" : "false") + "}";
         response.headers["Content-Type"] = "application/json";
         return response;
+    }
+
+    network::HttpResponse handleOrderBookRequest(const network::HttpRequest& request) {
+        try {
+            // Extract symbol from path parameters
+            auto it = request.path_params.find("symbol");
+            if (it == request.path_params.end()) {
+                network::HttpResponse response;
+                response.status_code = 400;
+                response.body = "{\"error\": \"Symbol parameter is required\"}";
+                response.headers["Content-Type"] = "application/json";
+                return response;
+            }
+
+            std::string symbol = it->second;
+            auto orderbook = matching_engine_->getOrderBook(symbol);
+
+            if (!orderbook) {
+                network::HttpResponse response;
+                response.status_code = 404;
+                response.body = "{\"error\": \"Order book not found for symbol: " + symbol + "\"}";
+                response.headers["Content-Type"] = "application/json";
+                return response;
+            }
+
+            // Get orderbook data as JSON
+            std::string orderbook_json = orderbook->toJSON();
+
+            network::HttpResponse response;
+            response.status_code = 200;
+            response.body = orderbook_json;
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const std::exception& e) {
+            network::HttpResponse response;
+            response.status_code = 500;
+            response.body =
+                json({{"error", std::string("Internal server error: ") + e.what()}}).dump();
+            response.headers["Content-Type"] = "application/json";
+            return response;
+        }
+    }
+
+    network::HttpResponse handleStatsRequest(const network::HttpRequest& request) {
+        try {
+            // Extract symbol from path parameters
+            auto it = request.path_params.find("symbol");
+            if (it == request.path_params.end()) {
+                network::HttpResponse response;
+                response.status_code = 400;
+                response.body = "{\"error\": \"Symbol parameter is required\"}";
+                response.headers["Content-Type"] = "application/json";
+                return response;
+            }
+
+            std::string symbol = it->second;
+
+            // For now, return basic stats - can be enhanced later with a statistics collector
+            json stats = {
+                {"symbol", symbol},
+                {"message", "Statistics endpoint - to be implemented with StatisticsCollector"}};
+
+            network::HttpResponse response;
+            response.status_code = 200;
+            response.body = stats.dump();
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const std::exception& e) {
+            network::HttpResponse response;
+            response.status_code = 500;
+            response.body =
+                json({{"error", std::string("Internal server error: ") + e.what()}}).dump();
+            response.headers["Content-Type"] = "application/json";
+            return response;
+        }
     }
 
     void handleTrade(const core::Trade& trade) {

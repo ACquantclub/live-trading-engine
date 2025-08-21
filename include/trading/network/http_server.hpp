@@ -4,8 +4,10 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <regex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "trading/utils/thread_pool.hpp"
 
@@ -17,6 +19,7 @@ struct HttpRequest {
     std::string path;
     std::string body;
     std::map<std::string, std::string> headers;
+    std::map<std::string, std::string> path_params;
 };
 
 struct HttpResponse {
@@ -37,7 +40,11 @@ class HttpServer {
     void stop();
     bool isRunning() const;
 
-    // Route handling
+    // New flexible route registration
+    void registerRoute(const std::string& method, const std::string& path_pattern,
+                       RequestHandler handler);
+
+    // Legacy route handling (for backward compatibility)
     void setOrderHandler(RequestHandler handler);
     void setHealthHandler(RequestHandler handler);
 
@@ -46,6 +53,14 @@ class HttpServer {
     void setMaxConnections(int max_connections);
 
   private:
+    struct Route {
+        std::string method;
+        std::string path_pattern;
+        std::regex path_regex;
+        std::vector<std::string> param_names;
+        RequestHandler handler;
+    };
+
     std::string host_;
     int port_;
     bool running_;
@@ -53,13 +68,18 @@ class HttpServer {
     int max_connections_;
 
     std::unique_ptr<utils::ThreadPool> thread_pool_;
+    std::vector<Route> routes_;
 
     RequestHandler order_handler_;
     RequestHandler health_handler_;
 
     void handleRequest(const HttpRequest& request);
     void handleClientRequest(int client_fd);
+    HttpResponse routeRequest(const HttpRequest& request);
     HttpResponse createErrorResponse(int status_code, const std::string& message);
+
+    std::regex pathPatternToRegex(const std::string& pattern,
+                                  std::vector<std::string>& param_names);
 
     // Internal server state
     int server_fd_ = -1;
