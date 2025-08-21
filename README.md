@@ -36,12 +36,13 @@ graph TD
     subgraph "Data & Logging"
         L --> N[Trade Logger]
         L --> O[Execution Logger]
+        L --> P[Statistics Collector]
         J --> R[Error Logging]
     end
 
     subgraph "Real-time APIs"
         I --> S[OrderBook API]
-        N --> T[Trade Statistics API]
+        P --> T[Trade Statistics API]
         B --> U[Health Check API]
     end
 ```
@@ -81,6 +82,11 @@ The engine uses `config/trading_engine.json` for configuration:
   },
   "redpanda": {
     "brokers": "<redpanda-host>:9092"
+  },
+  "statistics": {
+    "enabled": true,
+    "queue_capacity": 10000,
+    "cleanup_interval": 3600
   }
 }
 ```
@@ -170,7 +176,7 @@ Content-Type: application/json
 ```
 
 #### Get Trading Statistics
-Retrieve trading statistics for a symbol.
+Retrieve trading statistics for a symbol across different timeframes.
 
 **Request:**
 ```http
@@ -189,7 +195,151 @@ Content-Type: application/json
 
 {
   "symbol": "AAPL",
-  "message": "Statistics endpoint - to be implemented with StatisticsCollector"
+  "timestamp": 1692633600,
+  "data": {
+    "last_trade_price": 150.75,
+    "timeframes": {
+      "1m": {
+        "open": 150.50,
+        "high": 151.00,
+        "low": 150.25,
+        "close": 150.75,
+        "volume": 1500.0,
+        "dollar_volume": 225750.0,
+        "trade_count": 12,
+        "vwap": 150.50,
+        "timestamp": 1692633600
+      },
+      "1h": {
+        "open": 149.80,
+        "high": 151.20,
+        "low": 149.50,
+        "close": 150.75,
+        "volume": 45000.0,
+        "dollar_volume": 6768750.0,
+        "trade_count": 248,
+        "vwap": 150.42,
+        "timestamp": 1692633600
+      },
+      "1d": {
+        "open": 148.90,
+        "high": 151.50,
+        "low": 148.75,
+        "close": 150.75,
+        "volume": 180000.0,
+        "dollar_volume": 27135000.0,
+        "trade_count": 892,
+        "vwap": 150.75,
+        "timestamp": 1692633600
+      }
+    }
+  }
+}
+```
+
+#### Get Statistics for Specific Timeframe
+Retrieve trading statistics for a symbol and specific timeframe.
+
+**Request:**
+```http
+GET /api/v1/stats/{symbol}/{timeframe}
+```
+
+**Example:**
+```http
+GET /api/v1/stats/AAPL/1m
+```
+
+**Response:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "symbol": "AAPL",
+  "timeframe": "1m",
+  "timestamp": 1692633600,
+  "data": {
+    "open": 150.50,
+    "high": 151.00,
+    "low": 150.25,
+    "close": 150.75,
+    "volume": 1500.0,
+    "dollar_volume": 225750.0,
+    "trade_count": 12,
+    "vwap": 150.50,
+    "timestamp": 1692633600
+  },
+  "last_trade_price": 150.75
+}
+```
+
+**Supported Timeframes:**
+- `1m` - 1 minute buckets
+- `1h` - 1 hour buckets  
+- `1d` - 1 day buckets
+
+#### Get All Statistics
+Retrieve trading statistics for all symbols.
+
+**Request:**
+```http
+GET /api/v1/stats/all
+```
+
+**Response:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "timestamp": 1692633600,
+  "total_symbols": 3,
+  "symbols": {
+    "AAPL": {
+      "last_trade_price": 150.75,
+      "timeframes": {
+        "1m": { "open": 150.50, "high": 151.00, "low": 150.25, "close": 150.75, "volume": 1500.0, "dollar_volume": 225750.0, "trade_count": 12, "vwap": 150.50, "timestamp": 1692633600 },
+        "1h": { "open": 149.80, "high": 151.20, "low": 149.50, "close": 150.75, "volume": 45000.0, "dollar_volume": 6768750.0, "trade_count": 248, "vwap": 150.42, "timestamp": 1692633600 },
+        "1d": { "open": 148.90, "high": 151.50, "low": 148.75, "close": 150.75, "volume": 180000.0, "dollar_volume": 27135000.0, "trade_count": 892, "vwap": 150.75, "timestamp": 1692633600 }
+      }
+    },
+    "MSFT": {
+      "last_trade_price": 335.20,
+      "timeframes": { "..." }
+    }
+  }
+}
+```
+
+#### Get Statistics Summary
+Retrieve market-wide statistics summary and system metrics.
+
+**Request:**
+```http
+GET /api/v1/stats/summary
+```
+
+**Response:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "timestamp": 1692633600,
+  "total_symbols": 150,
+  "total_trades_processed": 45892,
+  "total_trades_dropped": 12,
+  "queue_size": 0,
+  "market_summary": {
+    "total_volume": 2450000.0,
+    "total_dollar_volume": 367500000.0,
+    "total_trades": 15420,
+    "price_range": {
+      "min": 25.50,
+      "max": 1850.75
+    }
+  }
 }
 ```
 
@@ -230,6 +380,13 @@ The API returns standard HTTP status codes and JSON error messages:
 }
 ```
 
+**503 Service Unavailable:**
+```json
+{
+  "error": "Statistics collector not available"
+}
+```
+
 **500 Internal Server Error:**
 ```json
 {
@@ -261,6 +418,22 @@ print(response.json())
 # Get order book
 orderbook = requests.get('http://<trading-engine-host>:8080/api/v1/orderbook/AAPL')
 print(orderbook.json())
+
+# Get trading statistics
+stats = requests.get('http://<trading-engine-host>:8080/api/v1/stats/AAPL')
+print(stats.json())
+
+# Get statistics for specific timeframe
+stats_1m = requests.get('http://<trading-engine-host>:8080/api/v1/stats/AAPL/1m')
+print(stats_1m.json())
+
+# Get all statistics
+all_stats = requests.get('http://<trading-engine-host>:8080/api/v1/stats/all')
+print(all_stats.json())
+
+# Get market summary
+summary = requests.get('http://<trading-engine-host>:8080/api/v1/stats/summary')
+print(summary.json())
 ```
 
 ### curl Examples
@@ -281,6 +454,18 @@ curl -X POST http://<trading-engine-host>:8080/order \
 # Get order book
 curl http://<trading-engine-host>:8080/api/v1/orderbook/AAPL
 
+# Get trading statistics
+curl http://<trading-engine-host>:8080/api/v1/stats/AAPL
+
+# Get statistics for specific timeframe
+curl http://<trading-engine-host>:8080/api/v1/stats/AAPL/1m
+
+# Get all statistics  
+curl http://<trading-engine-host>:8080/api/v1/stats/all
+
+# Get market summary
+curl http://<trading-engine-host>:8080/api/v1/stats/summary
+
 # Health check  
 curl http://<trading-engine-host>:8080/health
 ```
@@ -292,6 +477,8 @@ curl http://<trading-engine-host>:8080/health
 - **HTTP API:** RESTful endpoints for order submission and market data
 - **Thread Safety:** Concurrent order processing with thread pool management  
 - **Comprehensive Logging:** Trade execution and application event logging
+- **Real-time Statistics:** Live trading statistics with multiple timeframes (1m, 1h, 1d)
+- **Market Analytics:** OHLCV data, VWAP calculations, and volume metrics
 - **Health Monitoring:** Built-in health checks and system status endpoints
 
 ## Contributing
