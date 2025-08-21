@@ -2,7 +2,9 @@
 #include "trading/core/orderbook.hpp"
 #include <memory>
 #include <gtest/gtest.h>
+#include "../../apps/json.hpp"
 
+using json = nlohmann::json;
 using namespace trading::core;
 
 class OrderBookTest : public ::testing::Test {
@@ -116,4 +118,42 @@ TEST_F(OrderBookTest, GetOrdersReturnsCorrectlySorted) {
     ASSERT_EQ(sell_orders.size(), 2);
     EXPECT_EQ(sell_orders[0]->getPrice(), 150.8);  // Best ask first
     EXPECT_EQ(sell_orders[1]->getPrice(), 151.0);
+}
+
+TEST_F(OrderBookTest, ToJSONSerialization) {
+    auto buy_order1 =
+        std::make_shared<Order>("1", "user1", "AAPL", OrderType::LIMIT, OrderSide::BUY, 100, 150.0);
+    auto buy_order2 =
+        std::make_shared<Order>("2", "user2", "AAPL", OrderType::LIMIT, OrderSide::BUY, 50, 150.5);
+    auto sell_order1 = std::make_shared<Order>("3", "user3", "AAPL", OrderType::LIMIT,
+                                               OrderSide::SELL, 100, 151.0);
+    auto sell_order2 =
+        std::make_shared<Order>("4", "user4", "AAPL", OrderType::LIMIT, OrderSide::SELL, 75, 150.8);
+
+    orderbook_->addOrder(buy_order1);
+    orderbook_->addOrder(buy_order2);
+    orderbook_->addOrder(sell_order1);
+    orderbook_->addOrder(sell_order2);
+
+    std::string json_output = orderbook_->toJSON();
+    auto parsed_json = json::parse(json_output);
+
+    EXPECT_EQ(parsed_json["symbol"], "AAPL");
+    EXPECT_EQ(parsed_json["best_bid"], 150.5);
+    EXPECT_EQ(parsed_json["best_ask"], 150.8);
+    EXPECT_NEAR(parsed_json["spread"], 0.3, 1e-9);
+
+    auto bids = parsed_json["bids"];
+    ASSERT_EQ(bids.size(), 2);
+    EXPECT_EQ(bids[0]["price"], 150.5);
+    EXPECT_EQ(bids[0]["quantity"], 50);
+    EXPECT_EQ(bids[1]["price"], 150.0);
+    EXPECT_EQ(bids[1]["quantity"], 100);
+
+    auto asks = parsed_json["asks"];
+    ASSERT_EQ(asks.size(), 2);
+    EXPECT_EQ(asks[0]["price"], 150.8);
+    EXPECT_EQ(asks[0]["quantity"], 75);
+    EXPECT_EQ(asks[1]["price"], 151.0);
+    EXPECT_EQ(asks[1]["quantity"], 100);
 }

@@ -1,5 +1,10 @@
 #include "trading/core/orderbook.hpp"
 #include <algorithm>
+#include <iomanip>
+#include <sstream>
+
+#include "../../apps/json.hpp"
+using json = nlohmann::json;
 
 namespace trading {
 namespace core {
@@ -83,6 +88,44 @@ std::shared_ptr<Order> OrderBook::findOrder(const std::string& order_id) const {
 
 const std::string& OrderBook::getSymbol() const {
     return symbol_;
+}
+
+std::string OrderBook::toJSON() const {
+    json orderbook_json;
+    orderbook_json["symbol"] = symbol_;
+
+    // Serialize bids (buy orders, highest price first)
+    json bids = json::array();
+    for (const auto& [price, orders] : buy_orders_) {
+        if (!orders.empty()) {
+            double total_quantity = 0.0;
+            for (const auto& order : orders) {
+                total_quantity += order->getQuantity();
+            }
+            bids.push_back({{"price", price}, {"quantity", total_quantity}});
+        }
+    }
+    orderbook_json["bids"] = bids;
+
+    // Serialize asks (sell orders, lowest price first)
+    json asks = json::array();
+    for (const auto& [price, orders] : sell_orders_) {
+        if (!orders.empty()) {
+            double total_quantity = 0.0;
+            for (const auto& order : orders) {
+                total_quantity += order->getQuantity();
+            }
+            asks.push_back({{"price", price}, {"quantity", total_quantity}});
+        }
+    }
+    orderbook_json["asks"] = asks;
+
+    // Add market data
+    orderbook_json["best_bid"] = getBestBid();
+    orderbook_json["best_ask"] = getBestAsk();
+    orderbook_json["spread"] = getSpread();
+
+    return orderbook_json.dump();
 }
 
 std::map<double, std::vector<std::shared_ptr<Order>>, std::greater<double>>&

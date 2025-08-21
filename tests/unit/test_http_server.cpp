@@ -383,3 +383,395 @@ TEST_F(HttpServerTest, ConfigurableThreadPoolHandlesConcurrentRequests) {
     // and 8 threads, each request takes 50ms) - allowing for some variance
     EXPECT_GT(duration.count(), 60);
 }
+
+TEST_F(HttpServerTest, NewRoutingSystemBasicRoutes) {
+    // Test the new registerRoute method with basic routes
+    server_->registerRoute("GET", "/api/test", [](const HttpRequest& req) -> HttpResponse {
+        (void)req;
+        HttpResponse resp;
+        resp.status_code = 200;
+        resp.body = R"({"message": "test endpoint"})";
+        resp.headers["Content-Type"] = "application/json";
+        return resp;
+    });
+
+    server_->registerRoute("POST", "/api/create", [](const HttpRequest& req) -> HttpResponse {
+        (void)req;
+        HttpResponse resp;
+        resp.status_code = 201;
+        resp.body = R"({"message": "created"})";
+        resp.headers["Content-Type"] = "application/json";
+        return resp;
+    });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test GET route
+    std::string get_request =
+        "GET /api/test HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string get_response = sendHttpRequest(get_request);
+    EXPECT_NE(get_response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(get_response.find(R"({"message": "test endpoint"})"), std::string::npos);
+
+    // Test POST route
+    std::string post_request =
+        "POST /api/create HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string post_response = sendHttpRequest(post_request);
+    EXPECT_NE(post_response.find("HTTP/1.1 201 Created"), std::string::npos);
+    EXPECT_NE(post_response.find(R"({"message": "created"})"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, ParameterizedRoutes) {
+    // Test parameterized routes like /api/users/{userId}
+    server_->registerRoute(
+        "GET", "/api/users/{userId}", [](const HttpRequest& req) -> HttpResponse {
+            HttpResponse resp;
+            resp.status_code = 200;
+
+            auto it = req.path_params.find("userId");
+            if (it != req.path_params.end()) {
+                resp.body = R"({"userId": ")" + it->second + R"(", "name": "Test User"})";
+            } else {
+                resp.body = R"({"error": "userId not found"})";
+            }
+            resp.headers["Content-Type"] = "application/json";
+            return resp;
+        });
+
+    server_->registerRoute(
+        "GET", "/api/orders/{orderId}/details", [](const HttpRequest& req) -> HttpResponse {
+            HttpResponse resp;
+            resp.status_code = 200;
+
+            auto it = req.path_params.find("orderId");
+            if (it != req.path_params.end()) {
+                resp.body = R"({"orderId": ")" + it->second + R"(", "status": "filled"})";
+            } else {
+                resp.body = R"({"error": "orderId not found"})";
+            }
+            resp.headers["Content-Type"] = "application/json";
+            return resp;
+        });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test single parameter route
+    std::string user_request =
+        "GET /api/users/12345 HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string user_response = sendHttpRequest(user_request);
+    EXPECT_NE(user_response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(user_response.find(R"({"userId": "12345", "name": "Test User"})"), std::string::npos);
+
+    // Test route with parameter in middle of path
+    std::string order_request =
+        "GET /api/orders/ORD-999/details HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string order_response = sendHttpRequest(order_request);
+    EXPECT_NE(order_response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(order_response.find(R"({"orderId": "ORD-999", "status": "filled"})"),
+              std::string::npos);
+}
+
+TEST_F(HttpServerTest, MultipleParametersRoute) {
+    // Test route with multiple parameters like /api/users/{userId}/orders/{orderId}
+    server_->registerRoute(
+        "GET", "/api/users/{userId}/orders/{orderId}", [](const HttpRequest& req) -> HttpResponse {
+            HttpResponse resp;
+            resp.status_code = 200;
+
+            auto user_it = req.path_params.find("userId");
+            auto order_it = req.path_params.find("orderId");
+
+            if (user_it != req.path_params.end() && order_it != req.path_params.end()) {
+                resp.body = R"({"userId": ")" + user_it->second + R"(", "orderId": ")" +
+                            order_it->second + R"(", "found": true})";
+            } else {
+                resp.body = R"({"error": "parameters not found"})";
+            }
+            resp.headers["Content-Type"] = "application/json";
+            return resp;
+        });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    std::string request =
+        "GET /api/users/trader-123/orders/ORD-456 HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response = sendHttpRequest(request);
+    EXPECT_NE(response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response.find(R"({"userId": "trader-123", "orderId": "ORD-456", "found": true})"),
+              std::string::npos);
+}
+
+TEST_F(HttpServerTest, FastPathOptimization) {
+    // Test that the fast path optimization works for /order and /health endpoints
+    int order_call_count = 0;
+    int health_call_count = 0;
+
+    server_->registerRoute("POST", "/order",
+                           [&order_call_count](const HttpRequest& req) -> HttpResponse {
+                               (void)req;
+                               order_call_count++;
+                               HttpResponse resp;
+                               resp.status_code = 202;
+                               resp.body = R"({"status": "accepted"})";
+                               resp.headers["Content-Type"] = "application/json";
+                               return resp;
+                           });
+
+    server_->registerRoute("GET", "/health",
+                           [&health_call_count](const HttpRequest& req) -> HttpResponse {
+                               (void)req;
+                               health_call_count++;
+                               HttpResponse resp;
+                               resp.status_code = 200;
+                               resp.body = R"({"status": "healthy"})";
+                               resp.headers["Content-Type"] = "application/json";
+                               return resp;
+                           });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test /order endpoint (fast path)
+    std::string order_request =
+        "POST /order HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 2\r\n"
+        "Connection: close\r\n"
+        "\r\n{}";
+
+    std::string order_response = sendHttpRequest(order_request);
+    EXPECT_NE(order_response.find("HTTP/1.1 202 Accepted"), std::string::npos);
+    EXPECT_NE(order_response.find(R"({"status": "accepted"})"), std::string::npos);
+    EXPECT_EQ(order_call_count, 1);
+
+    // Test /health endpoint (fast path)
+    std::string health_request =
+        "GET /health HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string health_response = sendHttpRequest(health_request);
+    EXPECT_NE(health_response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(health_response.find(R"({"status": "healthy"})"), std::string::npos);
+    EXPECT_EQ(health_call_count, 1);
+}
+
+TEST_F(HttpServerTest, RouteNotFound) {
+    // Test that unregistered routes return 404
+    server_->registerRoute("GET", "/api/existing", [](const HttpRequest& req) -> HttpResponse {
+        (void)req;
+        HttpResponse resp;
+        resp.status_code = 200;
+        resp.body = R"({"found": true})";
+        return resp;
+    });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    std::string request =
+        "GET /api/nonexistent HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response = sendHttpRequest(request);
+    EXPECT_NE(response.find("HTTP/1.1 404 Not Found"), std::string::npos);
+    EXPECT_NE(response.find(R"({"error": "Not Found"})"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, MethodNotAllowed) {
+    // Test that wrong HTTP methods don't match
+    server_->registerRoute("GET", "/api/getonly", [](const HttpRequest& req) -> HttpResponse {
+        (void)req;
+        HttpResponse resp;
+        resp.status_code = 200;
+        resp.body = R"({"method": "GET"})";
+        return resp;
+    });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Try POST on a GET-only route
+    std::string request =
+        "POST /api/getonly HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response = sendHttpRequest(request);
+    EXPECT_NE(response.find("HTTP/1.1 404 Not Found"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, WildcardMethodRoute) {
+    // Test wildcard method matching (method = "*")
+    server_->registerRoute("*", "/api/any-method", [](const HttpRequest& req) -> HttpResponse {
+        HttpResponse resp;
+        resp.status_code = 200;
+        resp.body = R"({"method": ")" + req.method + R"("})";
+        resp.headers["Content-Type"] = "application/json";
+        return resp;
+    });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test GET
+    std::string get_request =
+        "GET /api/any-method HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string get_response = sendHttpRequest(get_request);
+    EXPECT_NE(get_response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(get_response.find(R"({"method": "GET"})"), std::string::npos);
+
+    // Test POST
+    std::string post_request =
+        "POST /api/any-method HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string post_response = sendHttpRequest(post_request);
+    EXPECT_NE(post_response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(post_response.find(R"({"method": "POST"})"), std::string::npos);
+
+    // Test PUT
+    std::string put_request =
+        "PUT /api/any-method HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string put_response = sendHttpRequest(put_request);
+    EXPECT_NE(put_response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(put_response.find(R"({"method": "PUT"})"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, ParameterizedRoutesWithSpecialCharacters) {
+    // Test that parameter values can contain various characters
+    server_->registerRoute(
+        "GET", "/api/symbols/{symbol}/price", [](const HttpRequest& req) -> HttpResponse {
+            HttpResponse resp;
+            resp.status_code = 200;
+
+            auto it = req.path_params.find("symbol");
+            if (it != req.path_params.end()) {
+                resp.body = R"({"symbol": ")" + it->second + R"(", "price": 150.50})";
+            } else {
+                resp.body = R"({"error": "symbol not found"})";
+            }
+            resp.headers["Content-Type"] = "application/json";
+            return resp;
+        });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test with hyphenated symbol
+    std::string request1 =
+        "GET /api/symbols/BTC-USD/price HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response1 = sendHttpRequest(request1);
+    EXPECT_NE(response1.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response1.find(R"({"symbol": "BTC-USD", "price": 150.50})"), std::string::npos);
+
+    // Test with underscore
+    std::string request2 =
+        "GET /api/symbols/ETH_USD/price HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response2 = sendHttpRequest(request2);
+    EXPECT_NE(response2.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response2.find(R"({"symbol": "ETH_USD", "price": 150.50})"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, LegacyHandlersStillWork) {
+    // Test that the legacy setOrderHandler and setHealthHandler still work
+    // alongside the new routing system
+
+    // Add a new route
+    server_->registerRoute("GET", "/api/new-endpoint", [](const HttpRequest& req) -> HttpResponse {
+        (void)req;
+        HttpResponse resp;
+        resp.status_code = 200;
+        resp.body = R"({"message": "new routing system"})";
+        return resp;
+    });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test legacy health handler
+    std::string health_request =
+        "GET /health HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string health_response = sendHttpRequest(health_request);
+    EXPECT_NE(health_response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(health_response.find(R"({"status": "healthy", "running": true})"), std::string::npos);
+
+    // Test legacy order handler (/orders - note the 's')
+    std::string order_request =
+        "POST /orders HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 2\r\n"
+        "Connection: close\r\n"
+        "\r\n{}";
+
+    std::string order_response = sendHttpRequest(order_request);
+    EXPECT_NE(order_response.find("HTTP/1.1 202 Accepted"), std::string::npos);
+    EXPECT_NE(order_response.find(R"({"message": "Order received", "id": "test-order"})"),
+              std::string::npos);
+
+    // Test new route
+    std::string new_request =
+        "GET /api/new-endpoint HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string new_response = sendHttpRequest(new_request);
+    EXPECT_NE(new_response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(new_response.find(R"({"message": "new routing system"})"), std::string::npos);
+}
