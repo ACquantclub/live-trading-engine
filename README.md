@@ -285,14 +285,6 @@ curl http://<trading-engine-host>:8080/api/v1/orderbook/AAPL
 curl http://<trading-engine-host>:8080/health
 ```
 
-## Performance Characteristics
-
-- **Latency:** Sub-millisecond order processing
-- **Throughput:** 100,000+ orders per second  
-- **Concurrency:** Multi-threaded HTTP server with configurable thread pool
-- **Memory:** Lock-free data structures for order books
-- **Persistence:** Asynchronous logging with message queue durability
-
 ## Key Features
 
 - **Asynchronous Processing:** Orders are queued via Redpanda for high-throughput processing
