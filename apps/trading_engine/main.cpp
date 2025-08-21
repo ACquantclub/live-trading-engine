@@ -6,6 +6,7 @@
 #include "trading/logging/trade_logger.hpp"
 #include "trading/messaging/queue_client.hpp"
 #include "trading/network/http_server.hpp"
+#include "trading/statistics/statistics_collector.hpp"
 #include "trading/utils/config.hpp"
 #include "trading/validation/order_validator.hpp"
 #include "../json.hpp"
@@ -50,6 +51,7 @@ class TradingEngine {
           matching_engine_(std::make_shared<core::MatchingEngine>()),
           http_server_(nullptr),
           queue_client_(nullptr),
+          stats_collector_(nullptr),
           running_(false) {
     }
 
@@ -70,6 +72,18 @@ class TradingEngine {
         // Initialize queue client
         std::string brokers = config_->getString("redpanda.brokers", "localhost:9092");
         queue_client_ = std::make_unique<messaging::QueueClient>(brokers, app_logger_);
+
+        // Initialize statistics collector
+        statistics::StatisticsCollector::Config stats_config;
+        stats_config.enabled = config_->getBool("statistics.enabled", true);
+        stats_config.queue_capacity = config_->getInt("statistics.queue_capacity", 10000);
+        stats_config.cleanup_interval =
+            std::chrono::seconds(config_->getInt("statistics.cleanup_interval", 3600));
+
+        // For now, use default timeframes - could be extended to parse comma-separated string
+        // stats_config.timeframes defaults to {"1m", "1h", "1d"} as defined in the constructor
+
+        stats_collector_ = std::make_unique<statistics::StatisticsCollector>(stats_config);
 
         // Setup callbacks
         setupCallbacks();
@@ -97,6 +111,13 @@ class TradingEngine {
         // Start HTTP server
         if (!http_server_->start()) {
             trade_logger_->logMessage(logging::LogLevel::ERROR, "Failed to start HTTP server");
+            return false;
+        }
+
+        // Start statistics collector
+        if (!stats_collector_->start()) {
+            trade_logger_->logMessage(logging::LogLevel::ERROR,
+                                      "Failed to start statistics collector");
             return false;
         }
 
@@ -130,6 +151,10 @@ class TradingEngine {
 
         if (http_server_) {
             http_server_->stop();
+        }
+
+        if (stats_collector_) {
+            stats_collector_->stop();
         }
 
         if (queue_client_) {
@@ -166,6 +191,19 @@ class TradingEngine {
         http_server_->registerRoute(
             "GET", "/api/v1/stats/{symbol}",
             [this](const network::HttpRequest& request) { return handleStatsRequest(request); });
+
+        http_server_->registerRoute(
+            "GET", "/api/v1/stats/{symbol}/{timeframe}",
+            [this](const network::HttpRequest& request) { return handleStatsRequest(request); });
+
+        http_server_->registerRoute(
+            "GET", "/api/v1/stats/all",
+            [this](const network::HttpRequest& request) { return handleAllStatsRequest(request); });
+
+        http_server_->registerRoute("GET", "/api/v1/stats/summary",
+                                    [this](const network::HttpRequest& request) {
+                                        return handleStatsSummaryRequest(request);
+                                    });
 
         // Setup trade callback
         matching_engine_->setTradeCallback(
@@ -344,40 +382,159 @@ class TradingEngine {
     network::HttpResponse handleStatsRequest(const network::HttpRequest& request) {
         try {
             // Extract symbol from path parameters
-            auto it = request.path_params.find("symbol");
-            if (it == request.path_params.end()) {
-                network::HttpResponse response;
-                response.status_code = 400;
-                response.body = "{\"error\": \"Symbol parameter is required\"}";
-                response.headers["Content-Type"] = "application/json";
-                return response;
+            auto symbol_it = request.path_params.find("symbol");
+            if (symbol_it == request.path_params.end()) {
+                return createErrorResponse(400, "Missing symbol parameter");
+            }
+            std::string symbol = symbol_it->second;
+
+            // Check for timeframe parameter
+            auto timeframe_it = request.path_params.find("timeframe");
+
+            if (!stats_collector_ || !stats_collector_->isRunning()) {
+                return createErrorResponse(503, "Statistics collector not available");
             }
 
-            std::string symbol = it->second;
+            // Get statistics for the symbol
+            auto stats_opt = stats_collector_->getStatsForSymbol(symbol);
+            if (!stats_opt.has_value()) {
+                return createErrorResponse(404, "No statistics available for symbol: " + symbol);
+            }
 
-            // For now, return basic stats - can be enhanced later with a statistics collector
-            json stats = {
-                {"symbol", symbol},
-                {"message", "Statistics endpoint - to be implemented with StatisticsCollector"}};
+            json response_json;
+            response_json["symbol"] = symbol;
+            response_json["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
+
+            if (timeframe_it != request.path_params.end()) {
+                // Return specific timeframe data
+                std::string timeframe = timeframe_it->second;
+                auto& timeframes = stats_opt->timeframes;
+                auto tf_it = timeframes.find(timeframe);
+
+                if (tf_it == timeframes.end()) {
+                    return createErrorResponse(404,
+                                               "No data available for timeframe: " + timeframe);
+                }
+
+                response_json["timeframe"] = timeframe;
+                response_json["data"] = tf_it->second.toJson();
+                response_json["last_trade_price"] = stats_opt->last_trade_price;
+            } else {
+                // Return all timeframes
+                response_json["data"] = stats_opt->toJson();
+            }
 
             network::HttpResponse response;
             response.status_code = 200;
-            response.body = stats.dump();
+            response.body = response_json.dump();
             response.headers["Content-Type"] = "application/json";
             return response;
 
         } catch (const std::exception& e) {
+            return createErrorResponse(500, "Internal server error: " + std::string(e.what()));
+        }
+    }
+
+    network::HttpResponse handleAllStatsRequest(const network::HttpRequest& request) {
+        (void)request;  // Suppress unused parameter warning
+        try {
+            if (!stats_collector_ || !stats_collector_->isRunning()) {
+                return createErrorResponse(503, "Statistics collector not available");
+            }
+
+            auto all_stats = stats_collector_->getAllStats();
+
+            json response_json;
+            response_json["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
+            response_json["total_symbols"] = all_stats.size();
+            response_json["symbols"] = json::object();
+
+            for (const auto& [symbol, stats] : all_stats) {
+                response_json["symbols"][symbol] = stats.toJson();
+            }
+
             network::HttpResponse response;
-            response.status_code = 500;
-            response.body =
-                json({{"error", std::string("Internal server error: ") + e.what()}}).dump();
+            response.status_code = 200;
+            response.body = response_json.dump();
             response.headers["Content-Type"] = "application/json";
             return response;
+
+        } catch (const std::exception& e) {
+            return createErrorResponse(500, "Internal server error: " + std::string(e.what()));
+        }
+    }
+
+    network::HttpResponse handleStatsSummaryRequest(const network::HttpRequest& request) {
+        (void)request;  // Suppress unused parameter warning
+        try {
+            if (!stats_collector_ || !stats_collector_->isRunning()) {
+                return createErrorResponse(503, "Statistics collector not available");
+            }
+
+            auto all_stats = stats_collector_->getAllStats();
+
+            json response_json;
+            response_json["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
+            response_json["total_symbols"] = all_stats.size();
+            response_json["total_trades_processed"] = stats_collector_->getTotalTradesProcessed();
+            response_json["total_trades_dropped"] = stats_collector_->getTotalTradesDropped();
+            response_json["queue_size"] = stats_collector_->getQueueSize();
+
+            // Market-wide aggregates
+            double total_volume = 0.0;
+            double total_dollar_volume = 0.0;
+            int total_trades = 0;
+            double max_price = 0.0;
+            double min_price = std::numeric_limits<double>::max();
+
+            for (const auto& [symbol, stats] : all_stats) {
+                // Use 1m timeframe for summary (most recent data)
+                auto it = stats.timeframes.find("1m");
+                if (it != stats.timeframes.end() && !it->second.isEmpty()) {
+                    const auto& bucket = it->second;
+                    total_volume += bucket.volume;
+                    total_dollar_volume += bucket.dollar_volume;
+                    total_trades += bucket.trade_count;
+
+                    max_price = std::max(max_price, bucket.high);
+                    if (bucket.low > 0) {
+                        min_price = std::min(min_price, bucket.low);
+                    }
+                }
+            }
+
+            response_json["market_summary"] = {
+                {"total_volume", total_volume},
+                {"total_dollar_volume", total_dollar_volume},
+                {"total_trades", total_trades},
+                {"price_range",
+                 {{"min", min_price == std::numeric_limits<double>::max() ? 0.0 : min_price},
+                  {"max", max_price}}}};
+
+            network::HttpResponse response;
+            response.status_code = 200;
+            response.body = response_json.dump();
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const std::exception& e) {
+            return createErrorResponse(500, "Internal server error: " + std::string(e.what()));
         }
     }
 
     void handleTrade(const core::Trade& trade) {
         trade_logger_->logTrade(trade);
+
+        // Submit trade to statistics collector
+        if (stats_collector_ && stats_collector_->isRunning()) {
+            stats_collector_->submitTrade(trade);
+        }
 
         // Execute the trade
         execution::ExecutionResult result = executor_->execute(trade);
@@ -391,6 +548,14 @@ class TradingEngine {
         trade_logger_->logExecution(result);
     }
 
+    network::HttpResponse createErrorResponse(int status_code, const std::string& message) {
+        network::HttpResponse response;
+        response.status_code = status_code;
+        response.body = json{{"error", message}}.dump();
+        response.headers["Content-Type"] = "application/json";
+        return response;
+    }
+
   private:
     std::shared_ptr<utils::Config> config_;
     std::shared_ptr<logging::TradeLogger> trade_logger_;
@@ -400,6 +565,7 @@ class TradingEngine {
     std::shared_ptr<core::MatchingEngine> matching_engine_;
     std::unique_ptr<network::HttpServer> http_server_;
     std::unique_ptr<messaging::QueueClient> queue_client_;
+    std::unique_ptr<statistics::StatisticsCollector> stats_collector_;
     bool running_;
 };
 
