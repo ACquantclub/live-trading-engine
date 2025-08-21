@@ -2,7 +2,7 @@
 #include "trading/core/orderbook.hpp"
 #include <memory>
 #include <gtest/gtest.h>
-#include "nlohmann/json.hpp"
+#include "../../apps/json.hpp"
 
 using json = nlohmann::json;
 using namespace trading::core;
