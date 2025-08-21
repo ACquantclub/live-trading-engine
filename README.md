@@ -13,7 +13,7 @@ graph TD
         A[HTTP Clients] --> B[HTTP Server]
         B --> C[Thread Pool]
     end
-    
+
     subgraph "Order Ingestion"
         C --> D[Order Validation]
         D --> E[Redpanda Message Queue]
@@ -25,22 +25,20 @@ graph TD
         G --> H[Order Validation]
         H -- Valid --> I[OrderBook Management]
         H -- Invalid --> J[Rejection Handler]
-        I --> K[Matching Engine]
     end
-    
-    subgraph "Trade Execution"
+
+    subgraph "Matching & Execution"
+        I --> K[Matching Engine]
         K -- Match Found --> L[Trade Executor]
         K -- No Match --> M[Order Remains in Book]
-        L --> N[Trade Logger]
-        L --> O[Execution Logger]
     end
     
     subgraph "Data & Logging"
-        N --> P[Trade Confirmations]
-        O --> Q[Execution Reports]
+        L --> N[Trade Logger]
+        L --> O[Execution Logger]
         J --> R[Error Logging]
     end
-    
+
     subgraph "Real-time APIs"
         I --> S[OrderBook API]
         N --> T[Trade Statistics API]
