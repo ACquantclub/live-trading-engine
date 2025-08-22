@@ -49,9 +49,12 @@ The project includes several utility scripts to streamline development workflow:
 
 # Performance benchmarking
 ./scripts/throughput_eval.sh
+
+# Test HTTP endpoints
+./scripts/test_endpoints.sh
 ```
 
-The `run_tests.sh` script executes both unit and integration tests, while `run_simulation.sh` can be used for end-to-end testing scenarios. The `throughput_eval.sh` script measures system performance under load.
+The `run_tests.sh` script executes both unit and integration tests, while `run_simulation.sh` can be used for end-to-end testing scenarios. The `throughput_eval.sh` script measures system performance under load. The `test_endpoints.sh` script sends http requests to each endpoint and checks all endpoints perform as expected.
 
 ## Code Quality & Style
 
