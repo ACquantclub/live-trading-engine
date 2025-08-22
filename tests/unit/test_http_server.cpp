@@ -376,7 +376,7 @@ TEST_F(HttpServerTest, ConfigurableThreadPoolHandlesConcurrentRequests) {
     EXPECT_EQ(started_count.load(), num_concurrent_requests);
 
     // With 8 threads and 50ms processing time per request, 16 requests should complete
-    // in roughly 100ms (2 batches) plus some overhead. Total time should be less than 500ms.
+    // in roughly 100ms (2 batches) plus some overhead. Total time should be less than 500ms
     EXPECT_LT(duration.count(), 500);
 
     // But it should take at least the processing time for 2 batches (since we have 16 requests
@@ -774,4 +774,207 @@ TEST_F(HttpServerTest, LegacyHandlersStillWork) {
     std::string new_response = sendHttpRequest(new_request);
     EXPECT_NE(new_response.find("HTTP/1.1 200 OK"), std::string::npos);
     EXPECT_NE(new_response.find(R"({"message": "new routing system"})"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, QueryParameterParsing) {
+    // Test that query parameters are correctly parsed and accessible
+    server_->registerRoute("GET", "/api/search", [](const HttpRequest& req) -> HttpResponse {
+        HttpResponse resp;
+        resp.status_code = 200;
+
+        std::string query_json = R"({"query_params": {)";
+        bool first = true;
+        for (const auto& [key, value] : req.query_params) {
+            if (!first)
+                query_json += ", ";
+            query_json += R"(")" + key + R"(": ")" + value + R"(")";
+            first = false;
+        }
+        query_json += "}}";
+
+        resp.body = query_json;
+        resp.headers["Content-Type"] = "application/json";
+        return resp;
+    });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test single query parameter
+    std::string request1 =
+        "GET /api/search?symbol=AAPL HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response1 = sendHttpRequest(request1);
+    EXPECT_NE(response1.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response1.find(R"("symbol": "AAPL")"), std::string::npos);
+
+    // Test multiple query parameters
+    std::string request2 =
+        "GET /api/search?symbol=MSFT&limit=10&offset=20 HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response2 = sendHttpRequest(request2);
+    EXPECT_NE(response2.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response2.find(R"("symbol": "MSFT")"), std::string::npos);
+    EXPECT_NE(response2.find(R"("limit": "10")"), std::string::npos);
+    EXPECT_NE(response2.find(R"("offset": "20")"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, QueryParameterURLDecoding) {
+    // Test that URL-encoded query parameters are properly decoded
+    server_->registerRoute("GET", "/api/decode", [](const HttpRequest& req) -> HttpResponse {
+        HttpResponse resp;
+        resp.status_code = 200;
+
+        auto it = req.query_params.find("message");
+        if (it != req.query_params.end()) {
+            resp.body = R"({"decoded_message": ")" + it->second + R"("})";
+        } else {
+            resp.body = R"({"error": "no message parameter"})";
+        }
+        resp.headers["Content-Type"] = "application/json";
+        return resp;
+    });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test URL decoding of spaces (+ and %20)
+    std::string request1 =
+        "GET /api/decode?message=hello+world HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response1 = sendHttpRequest(request1);
+    EXPECT_NE(response1.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response1.find(R"("decoded_message": "hello world")"), std::string::npos);
+
+    // Test URL decoding of %20 for spaces
+    std::string request2 =
+        "GET /api/decode?message=hello%20world HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response2 = sendHttpRequest(request2);
+    EXPECT_NE(response2.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response2.find(R"("decoded_message": "hello world")"), std::string::npos);
+
+    // Test URL decoding of special characters
+    std::string request3 =
+        "GET /api/decode?message=test%21%40%23 HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response3 = sendHttpRequest(request3);
+    EXPECT_NE(response3.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response3.find(R"("decoded_message": "test!@#")"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, QueryParametersWithoutValues) {
+    // Test query parameters without values (e.g., ?debug&verbose)
+    server_->registerRoute("GET", "/api/flags", [](const HttpRequest& req) -> HttpResponse {
+        HttpResponse resp;
+        resp.status_code = 200;
+
+        bool has_debug = req.query_params.find("debug") != req.query_params.end();
+        bool has_verbose = req.query_params.find("verbose") != req.query_params.end();
+
+        resp.body = R"({"debug": )" + std::string(has_debug ? "true" : "false") +
+                    R"(, "verbose": )" + std::string(has_verbose ? "true" : "false") + "}";
+        resp.headers["Content-Type"] = "application/json";
+        return resp;
+    });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test parameters without values
+    std::string request =
+        "GET /api/flags?debug&verbose HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response = sendHttpRequest(request);
+    EXPECT_NE(response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response.find(R"("debug": true)"), std::string::npos);
+    EXPECT_NE(response.find(R"("verbose": true)"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, QueryParametersWithPathParameters) {
+    // Test that query parameters work alongside path parameters
+    server_->registerRoute(
+        "GET", "/api/users/{userId}/orders", [](const HttpRequest& req) -> HttpResponse {
+            HttpResponse resp;
+            resp.status_code = 200;
+
+            auto user_it = req.path_params.find("userId");
+            auto limit_it = req.query_params.find("limit");
+            auto status_it = req.query_params.find("status");
+
+            resp.body = R"({"userId": ")" +
+                        (user_it != req.path_params.end() ? user_it->second : "unknown") + R"(")";
+
+            if (limit_it != req.query_params.end()) {
+                resp.body += R"(, "limit": ")" + limit_it->second + R"(")";
+            }
+
+            if (status_it != req.query_params.end()) {
+                resp.body += R"(, "status": ")" + status_it->second + R"(")";
+            }
+
+            resp.body += "}";
+            resp.headers["Content-Type"] = "application/json";
+            return resp;
+        });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test path parameter with query parameters
+    std::string request =
+        "GET /api/users/trader123/orders?limit=50&status=filled HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response = sendHttpRequest(request);
+    EXPECT_NE(response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response.find(R"("userId": "trader123")"), std::string::npos);
+    EXPECT_NE(response.find(R"("limit": "50")"), std::string::npos);
+    EXPECT_NE(response.find(R"("status": "filled")"), std::string::npos);
+}
+
+TEST_F(HttpServerTest, EmptyQueryParameters) {
+    // Test routes with no query parameters
+    server_->registerRoute("GET", "/api/empty", [](const HttpRequest& req) -> HttpResponse {
+        HttpResponse resp;
+        resp.status_code = 200;
+
+        resp.body = R"({"query_count": )" + std::to_string(req.query_params.size()) + "}";
+        resp.headers["Content-Type"] = "application/json";
+        return resp;
+    });
+
+    ASSERT_TRUE(server_->start());
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    // Test request without query parameters
+    std::string request =
+        "GET /api/empty HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8081\r\n"
+        "Connection: close\r\n"
+        "\r\n";
+
+    std::string response = sendHttpRequest(request);
+    EXPECT_NE(response.find("HTTP/1.1 200 OK"), std::string::npos);
+    EXPECT_NE(response.find(R"("query_count": 0)"), std::string::npos);
 }

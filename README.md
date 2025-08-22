@@ -87,6 +87,10 @@ The engine uses `config/trading_engine.json` for configuration:
     "enabled": true,
     "queue_capacity": 10000,
     "cleanup_interval": 3600
+  },
+  "admin": {
+    "enabled": true,
+    "password": "secure_admin_password_2025"
   }
 }
 ```
@@ -438,6 +442,150 @@ Content-Type: application/json
 }
 ```
 
+### Admin Endpoints
+
+The trading engine provides administrative endpoints for system control and monitoring. These endpoints require authentication and are disabled by default for security.
+
+#### Configuration
+To enable admin endpoints, configure them in `config/trading_engine.json`:
+
+```json
+{
+  "admin": {
+    "enabled": true,
+    "password": "your_secure_admin_password"
+  }
+}
+```
+
+#### Authentication Methods
+
+Admin endpoints support three authentication methods:
+
+1. **Query Parameter:** `?password=your_password`
+2. **Bearer Token:** `Authorization: Bearer your_password`
+3. **Custom Header:** `X-Admin-Password: your_password`
+
+#### Admin Status
+Get the current system status and trading state.
+
+**Request:**
+```http
+GET /admin/status?password=your_password
+```
+
+**Response:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "trading_active": true,
+  "engine_running": true,
+  "admin_enabled": true,
+  "total_orderbooks": 5,
+  "total_users": 42,
+  "statistics": {
+    "total_trades_processed": 15420,
+    "total_trades_dropped": 5,
+    "queue_size": 0
+  },
+  "timestamp": 1692633600
+}
+```
+
+#### Stop Trading
+Suspend all trading operations while allowing existing orders to be processed.
+
+**Request:**
+```http
+POST /admin/stop_trading
+X-Admin-Password: your_password
+```
+
+**Response:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "status": "success",
+  "message": "Trading suspended - existing orders will be processed",
+  "trading_active": false,
+  "timestamp": 1692633600
+}
+```
+
+#### Resume Trading
+Resume trading operations after being stopped.
+
+**Request:**
+```http
+POST /admin/resume_trading
+Authorization: Bearer your_password
+```
+
+**Response:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "status": "success",
+  "message": "Trading resumed",
+  "trading_active": true,
+  "timestamp": 1692633600
+}
+```
+
+#### Flush System
+Clear all order books and reset user portfolios. Trading must be stopped first.
+
+**Request:**
+```http
+POST /admin/flush_system
+Authorization: Bearer your_password
+```
+
+**Response (Success):**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "status": "success",
+  "message": "System flushed - order books cleared, user portfolio reset limited by API",
+  "cleared_orderbooks": 5,
+  "noted_users": 42,
+  "starting_cash": 100000.0,
+  "trading_active": false,
+  "note": "Complete user portfolio reset requires User class API updates",
+  "timestamp": 1692633600
+}
+```
+
+**Response (Trading Active Error):**
+```http
+HTTP/1.1 400 Bad Request
+Content-Type: application/json
+
+{
+  "error": "Must stop trading before flushing system"
+}
+```
+
+#### Admin Authentication Errors
+
+**Unauthorized (Invalid/Missing Password):**
+```http
+HTTP/1.1 401 Unauthorized
+Content-Type: application/json
+
+{
+  "error": "Unauthorized: Invalid admin credentials"
+}
+```
+
 ### Error Responses
 
 The API returns standard HTTP status codes and JSON error messages:
@@ -514,6 +662,27 @@ print(summary.json())
 # Get leaderboard
 leaderboard = requests.get('http://<trading-engine-host>:8080/api/v1/leaderboard')
 print(leaderboard.json())
+
+# Admin operations (requires authentication)
+admin_password = "your_admin_password"
+
+# Get admin status with query parameter
+admin_status = requests.get(f'http://<trading-engine-host>:8080/admin/status?password={admin_password}')
+print(admin_status.json())
+
+# Stop trading with Bearer token
+headers = {'Authorization': f'Bearer {admin_password}'}
+stop_response = requests.post('http://<trading-engine-host>:8080/admin/stop_trading', headers=headers)
+print(stop_response.json())
+
+# Resume trading with custom header
+headers = {'X-Admin-Password': admin_password}
+resume_response = requests.post('http://<trading-engine-host>:8080/admin/resume_trading', headers=headers)
+print(resume_response.json())
+
+# Flush system (after stopping trading)
+flush_response = requests.post('http://<trading-engine-host>:8080/admin/flush_system', headers=headers)
+print(flush_response.json())
 ```
 
 ### curl Examples
@@ -551,6 +720,28 @@ curl http://<trading-engine-host>:8080/api/v1/leaderboard
 
 # Health check  
 curl http://<trading-engine-host>:8080/health
+
+# Admin endpoints (requires authentication)
+ADMIN_PASSWORD="your_admin_password"
+
+# Get admin status with query parameter
+curl "http://<trading-engine-host>:8080/admin/status?password=${ADMIN_PASSWORD}"
+
+# Get admin status with Bearer token
+curl -H "Authorization: Bearer ${ADMIN_PASSWORD}" \
+  http://<trading-engine-host>:8080/admin/status
+
+# Stop trading with custom header
+curl -X POST -H "X-Admin-Password: ${ADMIN_PASSWORD}" \
+  http://<trading-engine-host>:8080/admin/stop_trading
+
+# Resume trading
+curl -X POST -H "Authorization: Bearer ${ADMIN_PASSWORD}" \
+  http://<trading-engine-host>:8080/admin/resume_trading
+
+# Flush system (after stopping trading)
+curl -X POST -H "X-Admin-Password: ${ADMIN_PASSWORD}" \
+  http://<trading-engine-host>:8080/admin/flush_system
 ```
 
 ## Key Features
@@ -558,6 +749,8 @@ curl http://<trading-engine-host>:8080/health
 - **Asynchronous Processing:** Orders are queued via Redpanda for high-throughput processing
 - **Real-time Matching:** Immediate order matching with price-time priority
 - **HTTP API:** RESTful endpoints for order submission and market data
+- **Admin Controls:** Secure administrative endpoints for system management and trading control
+- **Query Parameter Support:** Flexible URL query parameter parsing with URL decoding
 - **Thread Safety:** Concurrent order processing with thread pool management  
 - **Comprehensive Logging:** Trade execution and application event logging
 - **Real-time Statistics:** Live trading statistics with multiple timeframes (1m, 1h, 1d)

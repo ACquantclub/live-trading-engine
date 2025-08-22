@@ -14,6 +14,7 @@ using json = nlohmann::json;
 
 #include <algorithm>
 #include <chrono>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <memory>
@@ -54,38 +55,93 @@ class TradingEngine {
           http_server_(nullptr),
           queue_client_(nullptr),
           stats_collector_(nullptr),
-          running_(false) {
+          running_(false),
+          trading_active_(true),
+          admin_password_(""),
+          admin_enabled_(false) {
     }
 
     bool initialize(const std::string& config_file) {
-        // Load configuration
-        if (!config_->loadFromFile(config_file)) {
+        // Load configuration directly from JSON file
+        std::ifstream file(config_file);
+        if (!file.is_open()) {
             app_logger_->log(logging::LogLevel::ERROR,
-                             "Failed to load configuration from: " + config_file);
+                             "Failed to open configuration file: " + config_file);
             return false;
         }
 
+        json config_json;
+        try {
+            file >> config_json;
+        } catch (const json::exception& e) {
+            app_logger_->log(logging::LogLevel::ERROR,
+                             "Failed to parse JSON configuration: " + std::string(e.what()));
+            return false;
+        }
+
+        app_logger_->log(logging::LogLevel::INFO, "Config file being used: " + config_file);
+
         // Initialize HTTP server
-        std::string host = config_->getString("http.host", "0.0.0.0");
-        int port = config_->getInt("http.port", 8080);
-        int threads = config_->getInt("http.threads", 4);
+        std::string host = "0.0.0.0";
+        int port = 8080;
+        int threads = 4;
+
+        if (config_json.contains("http")) {
+            auto& http_config = config_json["http"];
+            if (http_config.contains("host"))
+                host = http_config["host"];
+            if (http_config.contains("port"))
+                port = http_config["port"];
+            if (http_config.contains("threads"))
+                threads = http_config["threads"];
+        }
+
         http_server_ = std::make_unique<network::HttpServer>(host, port, threads);
 
         // Initialize queue client
-        std::string brokers = config_->getString("redpanda.brokers", "localhost:9092");
+        std::string brokers = "localhost:9092";
+        if (config_json.contains("redpanda") && config_json["redpanda"].contains("brokers")) {
+            brokers = config_json["redpanda"]["brokers"];
+        }
         queue_client_ = std::make_unique<messaging::QueueClient>(brokers, app_logger_);
 
         // Initialize statistics collector
         statistics::StatisticsCollector::Config stats_config;
-        stats_config.enabled = config_->getBool("statistics.enabled", true);
-        stats_config.queue_capacity = config_->getInt("statistics.queue_capacity", 10000);
-        stats_config.cleanup_interval =
-            std::chrono::seconds(config_->getInt("statistics.cleanup_interval", 3600));
+        stats_config.enabled = true;
+        stats_config.queue_capacity = 10000;
+        stats_config.cleanup_interval = std::chrono::seconds(3600);
+
+        if (config_json.contains("statistics")) {
+            auto& stats_cfg = config_json["statistics"];
+            if (stats_cfg.contains("enabled"))
+                stats_config.enabled = stats_cfg["enabled"];
+            if (stats_cfg.contains("queue_capacity"))
+                stats_config.queue_capacity = stats_cfg["queue_capacity"];
+            if (stats_cfg.contains("cleanup_interval"))
+                stats_config.cleanup_interval = std::chrono::seconds(stats_cfg["cleanup_interval"]);
+        }
 
         // For now, use default timeframes - could be extended to parse comma-separated string
         // stats_config.timeframes defaults to {"1m", "1h", "1d"} as defined in the constructor
 
         stats_collector_ = std::make_unique<statistics::StatisticsCollector>(stats_config);
+
+        // Load admin configuration directly from JSON
+        admin_enabled_ = false;
+        admin_password_ = "";
+
+        if (config_json.contains("admin")) {
+            auto& admin_config = config_json["admin"];
+            if (admin_config.contains("enabled"))
+                admin_enabled_ = admin_config["enabled"];
+            if (admin_config.contains("password"))
+                admin_password_ = admin_config["password"];
+        }
+
+        app_logger_->log(
+            logging::LogLevel::INFO,
+            "Admin configuration: enabled=" + std::string(admin_enabled_ ? "true" : "false") +
+                ", password=" + (admin_password_.empty() ? "empty" : "set"));
 
         // Setup callbacks
         setupCallbacks();
@@ -212,6 +268,36 @@ class TradingEngine {
                                         return handleLeaderboardRequest(request);
                                     });
 
+        // Admin endpoints
+        if (admin_enabled_) {
+            app_logger_->log(logging::LogLevel::INFO, "Registering admin endpoints");
+
+            // Register admin routes - register exact match first, then with query params
+            // This ensures both /admin/stop_trading and /admin/stop_trading?password=... work
+
+            // Exact matches
+            http_server_->registerRoute("POST", "/admin/stop_trading",
+                                        [this](const network::HttpRequest& request) {
+                                            return handleAdminStopTrading(request);
+                                        });
+
+            http_server_->registerRoute("POST", "/admin/flush_system",
+                                        [this](const network::HttpRequest& request) {
+                                            return handleAdminFlushSystem(request);
+                                        });
+
+            http_server_->registerRoute("POST", "/admin/resume_trading",
+                                        [this](const network::HttpRequest& request) {
+                                            return handleAdminResumeTrading(request);
+                                        });
+
+            http_server_->registerRoute(
+                "GET", "/admin/status",
+                [this](const network::HttpRequest& request) { return handleAdminStatus(request); });
+        } else {
+            app_logger_->log(logging::LogLevel::INFO, "Admin endpoints disabled");
+        }
+
         // Setup trade callback
         matching_engine_->setTradeCallback(
             [this](const core::Trade& trade) { handleTrade(trade); });
@@ -223,6 +309,15 @@ class TradingEngine {
 
     network::HttpResponse handleOrderRequest(const network::HttpRequest& request) {
         try {
+            // Check if trading is active
+            if (!trading_active_) {
+                network::HttpResponse response;
+                response.status_code = 503;  // Service Unavailable
+                response.body = "{\"error\": \"Trading is currently suspended\"}";
+                response.headers["Content-Type"] = "application/json";
+                return response;
+            }
+
             // Light validation on the incoming request
             auto json_body = json::parse(request.body);
             if (!json_body.contains("userId") || !json_body.contains("id")) {
@@ -268,6 +363,13 @@ class TradingEngine {
 
     void processOrderFromQueue(const messaging::Message& msg) {
         try {
+            // Check if trading is active
+            if (!trading_active_) {
+                app_logger_->log(logging::LogLevel::INFO,
+                                 "Skipping order processing - trading suspended");
+                return;
+            }
+
             auto json_body = json::parse(msg.value);
 
             // Extract order data safely
@@ -706,6 +808,217 @@ class TradingEngine {
         trade_logger_->logExecution(result);
     }
 
+    bool validateAdminPassword(const network::HttpRequest& request) {
+        if (!admin_enabled_) {
+            return false;
+        }
+
+        // Check for password in Authorization header (Bearer token format)
+        auto auth_it = request.headers.find("Authorization");
+        if (auth_it != request.headers.end() && auth_it->second.length() > 7 &&
+            auth_it->second.substr(0, 7) == "Bearer ") {
+            std::string provided_password = auth_it->second.substr(7);
+            return provided_password == admin_password_;
+        }
+
+        // Check for password in X-Admin-Password header
+        auto password_it = request.headers.find("X-Admin-Password");
+        if (password_it != request.headers.end()) {
+            return password_it->second == admin_password_;
+        }
+
+        // Check for password in query parameters using the parsed query_params
+        auto query_it = request.query_params.find("password");
+        if (query_it != request.query_params.end()) {
+            return query_it->second == admin_password_;
+        }
+
+        return false;
+    }
+
+    network::HttpResponse handleAdminStopTrading(const network::HttpRequest& request) {
+        app_logger_->log(logging::LogLevel::INFO, "handleAdminStopTrading called");
+        if (!validateAdminPassword(request)) {
+            return createErrorResponse(401, "Unauthorized: Invalid admin credentials");
+        }
+
+        try {
+            if (!trading_active_) {
+                return createErrorResponse(400, "Trading is already suspended");
+            }
+
+            trading_active_ = false;
+            app_logger_->log(logging::LogLevel::WARNING,
+                             "Admin stopped trading - processing remaining orders");
+
+            json response_json;
+            response_json["status"] = "success";
+            response_json["message"] = "Trading suspended - existing orders will be processed";
+            response_json["trading_active"] = trading_active_;
+            response_json["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
+
+            network::HttpResponse response;
+            response.status_code = 200;
+            response.body = response_json.dump();
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const std::exception& e) {
+            return createErrorResponse(500, "Internal server error: " + std::string(e.what()));
+        }
+    }
+
+    network::HttpResponse handleAdminResumeTrading(const network::HttpRequest& request) {
+        if (!validateAdminPassword(request)) {
+            return createErrorResponse(401, "Unauthorized: Invalid admin credentials");
+        }
+
+        try {
+            if (trading_active_) {
+                return createErrorResponse(400, "Trading is already active");
+            }
+
+            trading_active_ = true;
+            app_logger_->log(logging::LogLevel::INFO, "Admin resumed trading");
+
+            json response_json;
+            response_json["status"] = "success";
+            response_json["message"] = "Trading resumed";
+            response_json["trading_active"] = trading_active_;
+            response_json["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
+
+            network::HttpResponse response;
+            response.status_code = 200;
+            response.body = response_json.dump();
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const std::exception& e) {
+            return createErrorResponse(500, "Internal server error: " + std::string(e.what()));
+        }
+    }
+
+    network::HttpResponse handleAdminFlushSystem(const network::HttpRequest& request) {
+        if (!validateAdminPassword(request)) {
+            return createErrorResponse(401, "Unauthorized: Invalid admin credentials");
+        }
+
+        try {
+            // Ensure trading is stopped before flushing
+            if (trading_active_) {
+                return createErrorResponse(400, "Must stop trading before flushing system");
+            }
+
+            app_logger_->log(logging::LogLevel::WARNING, "Admin initiated system flush");
+
+            // For system flush, we'll remove order books by recreating them
+            std::vector<std::string> valid_symbols = {"AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"};
+            int cleared_orderbooks = 0;
+
+            for (const auto& symbol : valid_symbols) {
+                auto existing_orderbook = matching_engine_->getOrderBook(symbol);
+                if (existing_orderbook) {
+                    // Create a new empty orderbook to replace the existing one
+                    auto new_orderbook = std::make_shared<core::OrderBook>(symbol);
+                    matching_engine_->addOrderBook(symbol, new_orderbook);
+                    cleared_orderbooks++;
+                }
+            }
+
+            // For user portfolios, we'll create new User objects with starting cash
+            // since we can't directly reset existing ones
+            auto& all_users = matching_engine_->getAllUsers();
+            int cleared_users = 0;
+            double starting_cash = 100000.0;  // Default value
+
+            // Note: We cannot actually clear user portfolios without proper reset methods
+            // This would require modifying the User class to add reset functionality
+            // For now, we'll just count existing users
+            cleared_users = all_users.size();
+
+            // Note: StatisticsCollector reset not available, will continue with existing stats
+
+            app_logger_->log(
+                logging::LogLevel::INFO,
+                "System flushed - cleared " + std::to_string(cleared_orderbooks) +
+                    " orderbooks. User portfolios noted: " + std::to_string(cleared_users));
+
+            json response_json;
+            response_json["status"] = "success";
+            response_json["message"] =
+                "System flushed - order books cleared, user portfolio reset limited by API";
+            response_json["cleared_orderbooks"] = cleared_orderbooks;
+            response_json["noted_users"] = cleared_users;
+            response_json["starting_cash"] = starting_cash;
+            response_json["trading_active"] = trading_active_;
+            response_json["note"] = "Complete user portfolio reset requires User class API updates";
+            response_json["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
+
+            network::HttpResponse response;
+            response.status_code = 200;
+            response.body = response_json.dump();
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const std::exception& e) {
+            return createErrorResponse(500, "Internal server error: " + std::string(e.what()));
+        }
+    }
+
+    network::HttpResponse handleAdminStatus(const network::HttpRequest& request) {
+        if (!validateAdminPassword(request)) {
+            return createErrorResponse(401, "Unauthorized: Invalid admin credentials");
+        }
+
+        try {
+            json response_json;
+            response_json["trading_active"] = trading_active_;
+            response_json["engine_running"] = running_;
+            response_json["admin_enabled"] = admin_enabled_;
+
+            // Get system stats
+            auto& all_users = matching_engine_->getAllUsers();
+
+            // Count orderbooks by checking known symbols
+            std::vector<std::string> valid_symbols = {"AAPL", "MSFT", "GOOGL", "AMZN", "TSLA"};
+            int total_orderbooks = 0;
+            for (const auto& symbol : valid_symbols) {
+                if (matching_engine_->getOrderBook(symbol)) {
+                    total_orderbooks++;
+                }
+            }
+
+            response_json["total_orderbooks"] = total_orderbooks;
+            response_json["total_users"] = all_users.size();
+
+            if (stats_collector_ && stats_collector_->isRunning()) {
+                response_json["statistics"] = {
+                    {"total_trades_processed", stats_collector_->getTotalTradesProcessed()},
+                    {"total_trades_dropped", stats_collector_->getTotalTradesDropped()},
+                    {"queue_size", stats_collector_->getQueueSize()}};
+            }
+
+            response_json["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
+
+            network::HttpResponse response;
+            response.status_code = 200;
+            response.body = response_json.dump();
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const std::exception& e) {
+            return createErrorResponse(500, "Internal server error: " + std::string(e.what()));
+        }
+    }
+
     network::HttpResponse createErrorResponse(int status_code, const std::string& message) {
         network::HttpResponse response;
         response.status_code = status_code;
@@ -725,6 +1038,9 @@ class TradingEngine {
     std::unique_ptr<messaging::QueueClient> queue_client_;
     std::unique_ptr<statistics::StatisticsCollector> stats_collector_;
     bool running_;
+    bool trading_active_;
+    std::string admin_password_;
+    bool admin_enabled_;
 };
 
 // Global instance for signal handling

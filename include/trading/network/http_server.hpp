@@ -20,6 +20,7 @@ struct HttpRequest {
     std::string body;
     std::map<std::string, std::string> headers;
     std::map<std::string, std::string> path_params;
+    std::map<std::string, std::string> query_params;
 };
 
 struct HttpResponse {
