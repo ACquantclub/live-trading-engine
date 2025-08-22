@@ -220,6 +220,10 @@ std::shared_ptr<User> MatchingEngine::getOrCreateUser(const std::string& user_id
     return user;
 }
 
+const std::map<std::string, std::shared_ptr<User>>& MatchingEngine::getAllUsers() const {
+    return users_;
+}
+
 bool MatchingEngine::updateUserPortfolios(const Trade& trade, double fee) {
     // Get or create users (with default starting cash if new)
     auto buyer = getOrCreateUser(trade.buy_user_id);

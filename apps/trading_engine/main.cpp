@@ -12,8 +12,10 @@
 #include "../json.hpp"
 using json = nlohmann::json;
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <thread>
 #include <signal.h>
@@ -203,6 +205,11 @@ class TradingEngine {
         http_server_->registerRoute("GET", "/api/v1/stats/summary",
                                     [this](const network::HttpRequest& request) {
                                         return handleStatsSummaryRequest(request);
+                                    });
+
+        http_server_->registerRoute("GET", "/api/v1/leaderboard",
+                                    [this](const network::HttpRequest& request) {
+                                        return handleLeaderboardRequest(request);
                                     });
 
         // Setup trade callback
@@ -516,6 +523,157 @@ class TradingEngine {
                 {"price_range",
                  {{"min", min_price == std::numeric_limits<double>::max() ? 0.0 : min_price},
                   {"max", max_price}}}};
+
+            network::HttpResponse response;
+            response.status_code = 200;
+            response.body = response_json.dump();
+            response.headers["Content-Type"] = "application/json";
+            return response;
+
+        } catch (const std::exception& e) {
+            return createErrorResponse(500, "Internal server error: " + std::string(e.what()));
+        }
+    }
+
+    network::HttpResponse handleLeaderboardRequest(const network::HttpRequest& request) {
+        (void)request;  // Suppress unused parameter warning
+        try {
+            auto& all_users = matching_engine_->getAllUsers();
+
+            if (all_users.empty()) {
+                json response_json;
+                response_json["timestamp"] =
+                    std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+                response_json["total_users"] = 0;
+                response_json["leaderboard"] = json::array();
+
+                network::HttpResponse response;
+                response.status_code = 200;
+                response.body = response_json.dump();
+                response.headers["Content-Type"] = "application/json";
+                return response;
+            }
+
+            // Calculate net worth for each user
+            std::vector<std::pair<std::string, double>> user_networth_pairs;
+
+            for (const auto& [user_id, user_ptr] : all_users) {
+                if (!user_ptr)
+                    continue;
+
+                double net_worth = user_ptr->getCashBalance();
+
+                // Add portfolio value
+                const auto& positions = user_ptr->getAllPositions();
+                for (const auto& [symbol, position] : positions) {
+                    if (position.quantity <= 0.0)
+                        continue;
+
+                    // Get current market price for the symbol
+                    auto orderbook = matching_engine_->getOrderBook(symbol);
+                    double market_price = 0.0;
+
+                    if (orderbook) {
+                        double best_bid = orderbook->getBestBid();
+                        double best_ask = orderbook->getBestAsk();
+
+                        // Use mid-price if both bid and ask are available, otherwise use available
+                        // one
+                        if (best_bid > 0.0 && best_ask > 0.0) {
+                            market_price = (best_bid + best_ask) / 2.0;
+                        } else if (best_bid > 0.0) {
+                            market_price = best_bid;
+                        } else if (best_ask > 0.0) {
+                            market_price = best_ask;
+                        } else {
+                            // No market data available, use cost basis (average price)
+                            market_price = position.average_price;
+                        }
+                    } else {
+                        // No order book exists, use cost basis
+                        market_price = position.average_price;
+                    }
+
+                    net_worth += position.quantity * market_price;
+                }
+
+                user_networth_pairs.emplace_back(user_id, net_worth);
+            }
+
+            // Sort by net worth descending
+            std::sort(user_networth_pairs.begin(), user_networth_pairs.end(),
+                      [](const auto& a, const auto& b) {
+                          return a.second > b.second;  // Higher net worth first
+                      });
+
+            // Build response JSON
+            json response_json;
+            response_json["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
+            response_json["total_users"] = user_networth_pairs.size();
+
+            json leaderboard = json::array();
+            int rank = 1;
+            for (const auto& [user_id, net_worth] : user_networth_pairs) {
+                auto user_ptr = all_users.at(user_id);
+                if (!user_ptr)
+                    continue;
+
+                json user_entry;
+                user_entry["rank"] = rank++;
+                user_entry["user_id"] = user_id;
+                user_entry["net_worth"] = net_worth;
+                user_entry["cash_balance"] = user_ptr->getCashBalance();
+                user_entry["realized_pnl"] = user_ptr->getRealizedPnl();
+
+                // Calculate portfolio value
+                double portfolio_value = net_worth - user_ptr->getCashBalance();
+                user_entry["portfolio_value"] = portfolio_value;
+
+                // Add position details
+                const auto& positions = user_ptr->getAllPositions();
+                json positions_json = json::array();
+                for (const auto& [symbol, position] : positions) {
+                    if (position.quantity <= 0.0)
+                        continue;
+
+                    // Get current market price
+                    auto orderbook = matching_engine_->getOrderBook(symbol);
+                    double market_price = position.average_price;  // fallback
+
+                    if (orderbook) {
+                        double best_bid = orderbook->getBestBid();
+                        double best_ask = orderbook->getBestAsk();
+
+                        if (best_bid > 0.0 && best_ask > 0.0) {
+                            market_price = (best_bid + best_ask) / 2.0;
+                        } else if (best_bid > 0.0) {
+                            market_price = best_bid;
+                        } else if (best_ask > 0.0) {
+                            market_price = best_ask;
+                        }
+                    }
+
+                    json pos_json;
+                    pos_json["symbol"] = symbol;
+                    pos_json["quantity"] = position.quantity;
+                    pos_json["average_price"] = position.average_price;
+                    pos_json["current_price"] = market_price;
+                    pos_json["market_value"] = position.quantity * market_price;
+                    pos_json["unrealized_pnl"] =
+                        (market_price - position.average_price) * position.quantity;
+
+                    positions_json.push_back(pos_json);
+                }
+                user_entry["positions"] = positions_json;
+
+                leaderboard.push_back(user_entry);
+            }
+
+            response_json["leaderboard"] = leaderboard;
 
             network::HttpResponse response;
             response.status_code = 200;
