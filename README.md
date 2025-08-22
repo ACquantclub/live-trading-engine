@@ -343,6 +343,82 @@ Content-Type: application/json
 }
 ```
 
+#### Get Leaderboard
+Retrieve a live leaderboard ranking users by net worth (cash + portfolio value at current market prices).
+
+**Request:**
+```http
+GET /api/v1/leaderboard
+```
+
+**Response:**
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "timestamp": 1692633600,
+  "total_users": 50,
+  "leaderboard": [
+    {
+      "rank": 1,
+      "user_id": "trader_001",
+      "net_worth": 125750.50,
+      "cash_balance": 25000.00,
+      "portfolio_value": 100750.50,
+      "realized_pnl": 5750.50,
+      "positions": [
+        {
+          "symbol": "AAPL",
+          "quantity": 500.0,
+          "average_price": 145.20,
+          "current_price": 150.75,
+          "market_value": 75375.00,
+          "unrealized_pnl": 2775.00
+        },
+        {
+          "symbol": "MSFT",
+          "quantity": 75.0,
+          "average_price": 330.00,
+          "current_price": 335.50,
+          "market_value": 25162.50,
+          "unrealized_pnl": 412.50
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "user_id": "trader_002",
+      "net_worth": 98250.25,
+      "cash_balance": 15000.00,
+      "portfolio_value": 83250.25,
+      "realized_pnl": -1749.75,
+      "positions": [
+        {
+          "symbol": "GOOGL",
+          "quantity": 50.0,
+          "average_price": 2850.00,
+          "current_price": 2875.25,
+          "market_value": 143762.50,
+          "unrealized_pnl": 1262.50
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Response Fields:**
+- `rank` - User's position on the leaderboard (1 = highest net worth)
+- `net_worth` - Total value (cash + portfolio at current market prices)
+- `cash_balance` - Available cash balance
+- `portfolio_value` - Total value of all positions at current market prices
+- `realized_pnl` - Cumulative realized profit/loss from closed positions
+- `positions` - Array of current holdings with market valuations
+  - `current_price` - Current market price (mid-price from order book, or cost basis if no market data)
+  - `market_value` - Position value at current market price
+  - `unrealized_pnl` - Paper profit/loss relative to average purchase price
+
 #### Health Check
 Check the health and status of the trading engine.
 
@@ -434,6 +510,10 @@ print(all_stats.json())
 # Get market summary
 summary = requests.get('http://<trading-engine-host>:8080/api/v1/stats/summary')
 print(summary.json())
+
+# Get leaderboard
+leaderboard = requests.get('http://<trading-engine-host>:8080/api/v1/leaderboard')
+print(leaderboard.json())
 ```
 
 ### curl Examples
@@ -465,6 +545,9 @@ curl http://<trading-engine-host>:8080/api/v1/stats/all
 
 # Get market summary
 curl http://<trading-engine-host>:8080/api/v1/stats/summary
+
+# Get leaderboard
+curl http://<trading-engine-host>:8080/api/v1/leaderboard
 
 # Health check  
 curl http://<trading-engine-host>:8080/health

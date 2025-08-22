@@ -43,6 +43,7 @@ class MatchingEngine {
     std::shared_ptr<User> getUser(const std::string& user_id);
     std::shared_ptr<User> getOrCreateUser(const std::string& user_id,
                                           double starting_cash = 10000.0);
+    const std::map<std::string, std::shared_ptr<User>>& getAllUsers() const;
 
     // Event handling
     void setTradeCallback(TradeCallback callback);
