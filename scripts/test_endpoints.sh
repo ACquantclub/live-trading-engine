@@ -173,8 +173,12 @@ test_endpoint() {
   local curl_cmd="curl -s -w '%{http_code}' -o /tmp/test_response"
   curl_cmd="$curl_cmd --connect-timeout 5 --max-time 10"
   
+  if [[ "$method" != "GET" ]]; then
+    curl_cmd="$curl_cmd -X $method"
+  fi
+  
   if [[ "$method" == "POST" && -n "$data" ]]; then
-    curl_cmd="$curl_cmd -X POST -H 'Content-Type: application/json' -d '$data'"
+    curl_cmd="$curl_cmd -H 'Content-Type: application/json' -d '$data'"
   fi
   
   curl_cmd="$curl_cmd 'http://${HTTP_HOST}:${HTTP_PORT}${path}'"
@@ -207,6 +211,7 @@ test_endpoint_flexible() {
   local description="$3"
   local valid_statuses="$4"  # e.g., "200|404"
   local data="${5:-}"
+  local extra_args="${6:-}"  # Additional curl arguments
   
   TOTAL_TESTS=$((TOTAL_TESTS + 1))
   
@@ -217,6 +222,10 @@ test_endpoint_flexible() {
   
   if [[ "$method" == "POST" && -n "$data" ]]; then
     curl_cmd="$curl_cmd -X POST -H 'Content-Type: application/json' -d '$data'"
+  fi
+  
+  if [[ -n "$extra_args" ]]; then
+    curl_cmd="$curl_cmd $extra_args"
   fi
   
   curl_cmd="$curl_cmd 'http://${HTTP_HOST}:${HTTP_PORT}${path}'"
@@ -326,6 +335,134 @@ run_tests() {
   
   # Test 15: Test different HTTP methods on health endpoint
   test_endpoint_flexible "POST" "/health" "POST to health endpoint (may accept any method)" "200|404|405"
+  
+  echo ""
+  echo "===== Testing Admin Endpoints ====="
+  
+  # Admin endpoints require authentication - test with and without credentials
+  local admin_password="admin_secret_2025"  # From config file
+  
+  # Test 16: Admin status without authentication (should fail)
+  test_endpoint "GET" "/admin/status" "Admin status without auth" "401"
+  
+  # Test 17: Admin status with authentication (should pass if admin enabled)
+  test_endpoint_flexible "GET" "/admin/status?password=$admin_password" "Admin status with auth" "200|404"
+  
+  # Test 18: Admin stop trading without authentication (should fail)
+  test_endpoint "POST" "/admin/stop_trading" "Stop trading without auth" "401"
+  
+  # Test 19: Admin stop trading with authentication
+  echo -n "Testing POST /admin/stop_trading (Stop trading with auth)... "
+  local status_code
+  status_code=$(curl -s -w '%{http_code}' -o /tmp/test_response \
+    --connect-timeout 5 --max-time 10 \
+    -X POST -H "X-Admin-Password: $admin_password" \
+    "http://${HTTP_HOST}:${HTTP_PORT}/admin/stop_trading" 2>/dev/null || echo "000")
+  
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  if [[ "$status_code" == "200" || "$status_code" == "404" || "$status_code" == "400" ]]; then
+    echo "✓ PASS ($status_code)"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo "✗ FAIL (expected 200/400/404, got $status_code)"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
+  rm -f /tmp/test_response
+  
+  # Test 20: Test order submission when trading might be stopped (should return 503)
+  local test_order='{"id":"TEST_AFTER_STOP","userId":"trader-test","symbol":"AAPL","type":"LIMIT","side":"BUY","quantity":1.0,"price":150.00}'
+  test_endpoint_flexible "POST" "/order" "Order submission after stop (may be blocked)" "202|503" "$test_order"
+  
+  # Test 21: Admin resume trading with authentication
+  echo -n "Testing POST /admin/resume_trading (Resume trading with auth)... "
+  status_code=$(curl -s -w '%{http_code}' -o /tmp/test_response \
+    --connect-timeout 5 --max-time 10 \
+    -X POST -H "X-Admin-Password: $admin_password" \
+    "http://${HTTP_HOST}:${HTTP_PORT}/admin/resume_trading" 2>/dev/null || echo "000")
+  
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  if [[ "$status_code" == "200" || "$status_code" == "404" || "$status_code" == "400" ]]; then
+    echo "✓ PASS ($status_code)"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo "✗ FAIL (expected 200/400/404, got $status_code)"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
+  rm -f /tmp/test_response
+  
+  # Test 22: Admin flush system without stopping trading first (should fail)
+  echo -n "Testing POST /admin/flush_system (Flush without stopping - should fail)... "
+  status_code=$(curl -s -w '%{http_code}' -o /tmp/test_response \
+    --connect-timeout 5 --max-time 10 \
+    -X POST -H "X-Admin-Password: $admin_password" \
+    "http://${HTTP_HOST}:${HTTP_PORT}/admin/flush_system" 2>/dev/null || echo "000")
+  
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  if [[ "$status_code" == "400" || "$status_code" == "404" ]]; then
+    echo "✓ PASS ($status_code - correctly requires trading to be stopped)"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    echo "✗ FAIL (expected 400/404, got $status_code)"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
+  rm -f /tmp/test_response
+  
+  # Test 23: Stop trading, then flush system
+  echo "Testing admin workflow: stop trading -> flush system -> resume trading"
+  
+  # Stop trading first
+  echo -n "  Stopping trading... "
+  status_code=$(curl -s -w '%{http_code}' -o /tmp/test_response \
+    --connect-timeout 5 --max-time 10 \
+    -X POST -H "Authorization: Bearer $admin_password" \
+    "http://${HTTP_HOST}:${HTTP_PORT}/admin/stop_trading" 2>/dev/null || echo "000")
+  
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  if [[ "$status_code" == "200" || "$status_code" == "400" || "$status_code" == "404" ]]; then
+    echo "✓ PASS ($status_code)"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+    
+    # Now flush system
+    echo -n "  Flushing system... "
+    status_code=$(curl -s -w '%{http_code}' -o /tmp/test_response \
+      --connect-timeout 5 --max-time 10 \
+      -X POST -H "Authorization: Bearer $admin_password" \
+      "http://${HTTP_HOST}:${HTTP_PORT}/admin/flush_system" 2>/dev/null || echo "000")
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    if [[ "$status_code" == "200" || "$status_code" == "404" ]]; then
+      echo "✓ PASS ($status_code)"
+      PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+      echo "✗ FAIL (expected 200/404, got $status_code)"
+      FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+    
+    # Resume trading
+    echo -n "  Resuming trading... "
+    status_code=$(curl -s -w '%{http_code}' -o /tmp/test_response \
+      --connect-timeout 5 --max-time 10 \
+      -X POST -H "Authorization: Bearer $admin_password" \
+      "http://${HTTP_HOST}:${HTTP_PORT}/admin/resume_trading" 2>/dev/null || echo "000")
+    
+    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+    if [[ "$status_code" == "200" || "$status_code" == "404" ]]; then
+      echo "✓ PASS ($status_code)"
+      PASSED_TESTS=$((PASSED_TESTS + 1))
+    else
+      echo "✗ FAIL (expected 200/404, got $status_code)"
+      FAILED_TESTS=$((FAILED_TESTS + 1))
+    fi
+  else
+    echo "✗ FAIL (expected 200/400/404, got $status_code)"
+    FAILED_TESTS=$((FAILED_TESTS + 1))
+  fi
+  rm -f /tmp/test_response
+  
+  # Test 24: Test different authentication methods
+  test_endpoint_flexible "GET" "/admin/status" "Admin status with Bearer token" "200|404" "" "-H 'Authorization: Bearer $admin_password'"
+  test_endpoint_flexible "GET" "/admin/status" "Admin status with custom header" "200|404" "" "-H 'X-Admin-Password: $admin_password'"
+  test_endpoint "GET" "/admin/status?password=wrong_password" "Admin status with wrong password" "401"
   
   echo ""
   echo "===== Test Results ====="

@@ -42,6 +42,52 @@ static void setSocketTimeout(int fd, int seconds) {
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 }
+
+// Helper function to URL decode a string
+std::string urlDecode(const std::string& str) {
+    std::string result;
+    for (size_t i = 0; i < str.length(); ++i) {
+        if (str[i] == '%' && i + 2 < str.length()) {
+            std::string hex = str.substr(i + 1, 2);
+            char* end;
+            long value = std::strtol(hex.c_str(), &end, 16);
+            if (*end == 0) {
+                result += static_cast<char>(value);
+                i += 2;
+            } else {
+                result += str[i];
+            }
+        } else if (str[i] == '+') {
+            result += ' ';
+        } else {
+            result += str[i];
+        }
+    }
+    return result;
+}
+
+// Helper function to parse query parameters from a query string
+std::map<std::string, std::string> parseQueryParameters(const std::string& query_string) {
+    std::map<std::string, std::string> params;
+    if (query_string.empty()) {
+        return params;
+    }
+
+    std::istringstream qs(query_string);
+    std::string pair;
+    while (std::getline(qs, pair, '&')) {
+        auto equals_pos = pair.find('=');
+        if (equals_pos != std::string::npos) {
+            std::string key = urlDecode(pair.substr(0, equals_pos));
+            std::string value = urlDecode(pair.substr(equals_pos + 1));
+            params[key] = value;
+        } else {
+            // Parameter without value
+            params[urlDecode(pair)] = "";
+        }
+    }
+    return params;
+}
 }  // namespace
 
 HttpServer::HttpServer(const std::string& host, int port, int threads)
@@ -238,7 +284,18 @@ void HttpServer::handleClientRequest(int client_fd) {
             request_line.pop_back();
         {
             std::istringstream rl(request_line);
-            rl >> req.method >> req.path;  // ignore HTTP version
+            std::string full_path;
+            rl >> req.method >> full_path;  // ignore HTTP version
+
+            // Separate path from query string
+            size_t query_pos = full_path.find('?');
+            if (query_pos != std::string::npos) {
+                req.path = full_path.substr(0, query_pos);
+                std::string query_string = full_path.substr(query_pos + 1);
+                req.query_params = parseQueryParameters(query_string);
+            } else {
+                req.path = full_path;
+            }
         }
         std::string line;
         while (std::getline(hs, line)) {

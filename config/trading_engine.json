@@ -53,5 +53,9 @@
         "queue_capacity": 10000,
         "cleanup_interval": 3600,
         "timeframes": ["1m", "5m", "1h", "1d"]
+    },
+    "admin": {
+        "password": "admin_secret_2025",
+        "enabled": true
     }
 } 
